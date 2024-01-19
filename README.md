@@ -1,6 +1,6 @@
 # Arbitrary String Construction Project
 
-The *Arbitrary String Construction Project* (*ASCP*) is a typescript-embedded domain specific language for creating strings. You can think of it as a highly expressive but completely unopinioated templating language. It take inspiration from lisp-like macro expansion and [TeX](https://en.wikipedia.org/wiki/TeX), but the design ensures meaningful error reporting, principled interaction between stateful macros, and stati typing for the input expressions.
+The *Arbitrary String Construction Project* (*ASCP*) is a typescript-embedded domain specific language for creating strings. You can think of it as a highly expressive but completely unopinioated templating language. It takes inspiration from lisp-like macro expansion and [TeX](https://en.wikipedia.org/wiki/TeX), but the design ensures meaningful error reporting, principled interaction between stateful macros, and static typing for the input expressions.
 
 ## Usage
 
