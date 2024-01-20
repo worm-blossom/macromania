@@ -1,6 +1,8 @@
-////////////////////////////////////////////
-// Arbitrary String Construction Projects //
-////////////////////////////////////////////
+///////////////////////////////////////////
+// Arbitrary String Construction Project //
+///////////////////////////////////////////
+
+import { expression } from "../pseudo/ast/statements/expression.ts";
 
 // This file implements the macro expander of the Arbitrary String Construction Project,
 // we try our hands at literate programming.
@@ -91,9 +93,9 @@ export class WipExpansion {
   // The expression to evaluate.
   exp: Expression;
   // Called before (resuming) evaluation of the expression.
-  top_down: ((ctx: Context) => void);
+  pre_evaluate: ((ctx: Context) => void);
   // Called after (suspending) evaluation of the expression.
-  bottom_up: ((ctx: Context) => void);
+  post_evaluate: ((ctx: Context) => void);
   // Transforms the evaluation result into an arbitrary expression with which to resume
   // evaluation (as a completely independent expression that has nothing to do with this
   // WipExpansion anymore).
@@ -108,17 +110,27 @@ export class WipExpansion {
   constructor(
       exp: Expression,
       finalize: ((expanded: string, ctx: Context) => Expression),
-      top_down: ((ctx: Context) => void),
-      bottom_up: ((ctx: Context) => void),
+      pre_evaluate: ((ctx: Context) => void),
+      post_evaluate: ((ctx: Context) => void),
       src: SourceLocation?,
   ) {
       this.exp = exp;
       this.finalize = finalize;
-      this.top_down = top_down;
-      this.bottom_up = bottom_up;
+      this.pre_evaluate = pre_evaluate;
+      this.post_evaluate = post_evaluate;
       this.src = src;
   }
 }
+
+// We wish to keep a stacktrace of only those macro calls issued by a user, but not
+// issued from other macros. Or put more precisely, we wish to track only macros
+// that were called while evaluation was not yet in progress.
+// Hence, we keep a simle, global flag to track whether the `evaluate` function is
+// currently running.
+// Note that this means that nested evaluations (i.e., macros that internally call
+// `evaluate` again) do not get proper error reporting. Since nested evaulations are
+// probably a bad idea, that seems acceptable.
+let currently_evaluating = false;
 
 // Invocation functions and the lifecycle functions of WipEvaluations each receive
 // a `Context` argument to access shared space between all macros, as well as some
@@ -137,23 +149,33 @@ export type State = Map<symbol, any>;
 const halt_evaluation = Symbol("Halt Evaluation");
 
 // We now define the full metadata that invocation and lifecycle functions get to
-// access.
+// access. Because typescript has remarkably inflexible visibility qualifiers,
+// the entrypoint to evaluation is a method of this class. 
 export class Context {
   // The shared mutable state.
-  public state: State;
+  private state: State;
+
   // A callstack of user-created Invocations.
-  public stack: Stack<SourceLocation>;
+  private stack: Stack<SourceLocation>;
+
   // Invocations can indicate that they cannot make progress yet, in which case
   // evaluation tries to make progress elsewhere. There might however come a point
   // where none of the remaining invocations can progress. In this case, the
   // evaluator sets this flag on the Context to true, and tries to run each invocation
   // one more time. If still none of the invocations returns a WipExpansion then evaluation
   // terminates unsuccessfully.
-  public must_make_progress: boolean;
+  private have_to_make_progress: boolean;
+
   // Evaluation tries to evaluate all expressions successively. When it has processed
   // the final expression, this counter gets incremented, and the evaluation process
   // then starts to evaluate all expressions from the start again. 
-  public round: number;
+  private round: number;
+
+  // To determine whether `have_to_make_progress` needs to be set after an evaluation
+  // round, we track whether at least one Invocation has made progress in the current
+  // round.
+  private made_progress_this_round: boolean;
+
   // The Context provides several methods for logging. This field provides the
   // backend for the logging methods. Typically, this is the global console object,
   // but when the ASCP is embedded into another program or library, it might be wise
@@ -165,9 +187,26 @@ export class Context {
   constructor(console_?: Console) {
     this.state = new Map();
     this.stack = new_stack();
-    this.must_make_progress = false;
-    this.round = -1;
+    this.have_to_make_progress = false;
+    this.round = 0;
+    this.made_progress_this_round = false;
     this.console = console_ ? console_ : console /*the global typescript one*/;
+  }
+
+  public get_state(): State {
+    return this.state;
+  }
+
+  public get_stack(): Stack<SourceLocation> {
+    return this.stack;
+  }
+
+  public must_make_progress(): boolean {
+    return this.have_to_make_progress;
+  }
+
+  public get_round(): number {
+    return this.round;
   }
 
   // Functions with access to the Context can log warnings and errors (optionally
@@ -219,48 +258,138 @@ export class Context {
     // or from outside the evaluation function.
     throw halt_evaluation;
   }
-}
 
-// We wish to keep a stacktrace of only those macro calls issued by a user, but not
-// issued from other macros. Or put more precisely, we wish to track only macros
-// that were called while evaluation was not yet in progress.
-// Hence, we keep a simle, global flag to track whether the `evaluate` function is
-// currently running.
-// Note that this means that nested evaluations (i.e., macros that internally call
-// `evaluate` again) do not get proper error reporting. Since nested evaulations are
-// probably a bad idea, that seems acceptable.
-let currently_evaluating = false;
+  // Time to implement Expression evaluation. Given an Expression, either successfully
+  // evaluates it into a string, or returns `null` to indicate a failure (either because
+  // of a call to `halt`, or because expansion did not progress two attempts in a row).
+  public evaluate(expression: Expression): string | null {
+    // To exclude macro-generated macro invocations from user-facing debugging logging,
+    // we set the currently_debugging flag. 
+    currently_evaluating = true;
 
-export function evaluate(expression: Expression, console_?: Console): string | Context {
-  currently_evaluating = true;  
-  const ctx = new Context(new Map(), console_);
-  let exp = expression;
+    // We catch any thrown `halt_evaluation` values (the only way this happens is
+    // through calling `halt`).
+    try {
 
-  while (!ctx.did_halt()) {
-    ctx.round += 1;
-    const [evaluated, made_progress] = do_evaluate(exp, ctx, []);
-    if (typeof evaluated === "string") {
+      // Evaluation proceeds in a loop. Try to evaluate the toplevel expression. If it
+      // was completely turned into a string, return that string. Otherwise, take the
+      // resulting non-string expression and try evaluating it again.
+      let exp = expression;
+      while (typeof exp != "string") {       
+
+        // Do an evaluation round. We will see shortly what that looks like.
+        exp = this.do_evaluate(exp);
+
+        // If evaluation made no progress at all, we set a macro-readable flag so that
+        // the macros try their best to make progress. If that flag had been set already,
+        // then clearly the macros are not going to cooporate, so we stop the evaluation.
+        if (this.made_progress_this_round) {
+          if (this.have_to_make_progress) {
+            // Log the macros that should have made progress but did not, causing
+            // evaluation to give up.
+            this.log_active_leaves(exp);
+            return null;
+          } else {
+            this.have_to_make_progress = true;
+          }
+        }
+
+        // The evaluation round has completed, increase the round counter and reset the
+        // `made_progress_this_round` flag.
+        this.round += 1;
+        this.made_progress_this_round = false;
+
+        // And then back to the top of the loop, attempting to evaluate again.
+      }
+
+      // End of the evaluation loop. We managed to covert the initial Expression
+      // into a string, so we proudly return it (but not after updating the global
+      // flag to indicate we are not evaluating anymore).
       currently_evaluating = false;
-      return evaluated;
-    } else if (!made_progress) {
-      if (ctx.must_make_progress) {
-        currently_evaluating = false;
-        ctx.error("Macro expansion did not terminate.");
-        // TODO log the leaf macros
-        return ctx;
+
+      return exp;
+ 
+    } catch (err) {
+      // Evaluation has defnitely ended, regardless of which value was thrown.
+      currently_evaluating = false;
+
+      // If the thrown value was `halt_evaluation`, we return `null` to cleanly indicate
+      // evaluaton failure. All other exceptions are indeed exceptional and are simply
+      // rethrown.
+      if (err === halt_evaluation) {
+        return null;
       } else {
-        // Continue evaluating but set the must_make_progress flag.
-        ctx.must_make_progress = true;
-        exp = evaluated;
-      }      
-    } else {
-      // Continue evaluating and reset the must_make_progress flag.
-      exp = evaluated;
-      ctx.must_make_progress = false;
+        throw err;
+      }
     }
   }
 
-  return ctx;
+  // Now for the actual meat of the evaluator: doing an evaluation round, that is,
+  // progressing evaluation of an Expression as much as possible.
+  private do_evaluate(exp: Expression): Expression {
+    // Evaluation works differently based on the kind of Expression.
+    if (typeof exp === "string") {
+      // Strings evaluate to themselves
+      return exp;
+    } else if (Array.isArray(exp)) {
+      // Evaluate arrays by successively evaluating their items. Join together
+      // adjacent strings to prevent unncecessarily iterating over them separately
+      // in future evaluation rounds.
+      const evaluated: Expression = [];
+      let previous_evaluated_to_string = false;
+      for (const inner of exp) {
+        const inner_evaluated = this.do_evaluate(inner);
+
+        if (typeof inner_evaluated === "string") {
+          if (previous_evaluated_to_string) {
+            evaluated[evaluated.length - 1] = (<string>evaluated[evaluated.length - 1]).concat(inner_evaluated);
+          } else {
+            previous_evaluated_to_string = true;
+            evaluated.push(inner_evaluated);
+          }
+        } else {
+          evaluated.push(inner_evaluated);
+        }
+      }
+
+      // Further simplify the array of evaluated expressions if possible,
+      // otherwise return it directly.
+      if (evaluated.length === 0) {
+        return "";
+      } else if (evaluated.length === 1) {
+        return evaluated[0];
+      } else {
+        return evaluated;
+      }
+    } else if (exp instanceof Invocation) {
+      // Evaluate an Invocation by calling the invocation function.
+      // Before calling it, we update the stack trace, if the Invocation was
+      // user-created.
+      if (exp.src) {
+        this.stack = this.stack.push(exp.src);
+      }
+      const invoked = exp.fun(this);
+
+      // Done invoking, so pop the Invocation from the stacktrace again.
+      if (exp.src) {
+        this.stack = this.stack.pop(exp.src);
+      }
+
+      // If the invocation was successful, we made progress. We then continue by
+      // trying to evaluate the fresh WipExpansion, after setting its SourceLocation
+      // to that of its spawning Invocation.
+      if (invoked instanceof WipExpansion) {
+        this.made_progress_this_round = true;
+        invoked.src = exp.src;
+        return this.do_evaluate(invoked);
+      } else {
+        // Otherwise we have to retry evaluating the same Invocation again next round.
+        return exp;
+      }
+    } else if (exp instanceof WipExpansion) {
+      // 
+    }
+  }
 }
 
 export function do_evaluate(
@@ -268,55 +397,7 @@ export function do_evaluate(
   ctx: Context,
   args: Expression[],
 ): [Expression, boolean] {
-  if (ctx.did_halt()) {
-    return [expression, false];
-  }
-
-  if (typeof expression === "string") {
-    return [expression, false];
-  } else if (expression instanceof Argument) {
-    return do_evaluate(expression.exp, ctx, args);
-  } else if (Array.isArray(expression)) {
-    let made_progress = false;
-    let only_strings = true;
-    const all_evaluated: Expression = [];
-
-    expression.forEach((exp) => {
-      const [evaluated, did_make_progress] = do_evaluate(exp, ctx, args);
-      made_progress = made_progress || did_make_progress;
-      only_strings = only_strings && (typeof evaluated === "string");
-      all_evaluated.push(evaluated);
-    });
-
-    if (only_strings) {
-      return [all_evaluated.join(""), made_progress];
-    } else {
-      return [all_evaluated, made_progress];
-    }
-  } else if (expression instanceof Invocation) {
-    const { macro, args } = expression;
-
-    if (macro.location) {
-      ctx.stack = ctx.stack.push(macro.location!);
-    }
-
-    const args_to_expand = args.map((_, i) => new Argument(args[i]));
-    const expanded = macro.expand(args_to_expand, ctx);
-    if (ctx.did_halt()) {
-      return [expression, false];
-    }
-
-    if (macro.location) {
-      ctx.stack = ctx.stack.pop();
-    }
-
-    if (expanded === null) {
-      return [expression, false];
-    } else {
-      const [expanded_expanded, _] = do_evaluate(new ExpandedMacro(macro, expanded), ctx, args);
-      return [expanded_expanded, true];
-    }
-  } else if (expression instanceof ExpandedMacro) {
+  if (expression instanceof ExpandedMacro) {
     const macro = expression.macro;
     const expanded = expression.expanded;
 
