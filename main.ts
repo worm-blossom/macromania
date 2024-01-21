@@ -2,10 +2,12 @@
 // Arbitrary String Construction Project //
 ///////////////////////////////////////////
 
-import { expression } from "../pseudo/ast/statements/expression.ts";
-
 // This file implements the macro expander of the Arbitrary String Construction Project,
 // we try our hands at literate programming.
+
+import * as Colors from "https://deno.land/std@0.204.0/fmt/colors.ts";
+
+import { Stack, new_stack } from "./stack.ts";
 
 // As a macro expander, the ASCP produces text by taking an `Expression` and evaluating it
 // into a new expression, evaluating that expression again, and so on until the resulting
@@ -78,11 +80,11 @@ export class Invocation {
   // If the Invocation was created by another Invocation, then no SourceLocation is tracked.
   // Hence, the Invocation does not appear in userfacing stack traces (if it did, that
   // would leak implementation details of macros).
-  src: SourceLocation?;
+  src?: SourceLocation;
 
   constructor(
     fun: (ctx: Context) => WipExpansion | null,
-    src: SourceLocation?,
+    src?: SourceLocation,
   ) {
     this.fun = fun;
     this.src = src;
@@ -105,19 +107,19 @@ export class WipExpansion {
 
   // A SourceLocation, tracked purely for error reporting and stack traces. Has no impact
   // on the evaluation semantics.
-  src: SourceLocation?;
+  src?: SourceLocation;
 
   constructor(
       exp: Expression,
-      finalize: ((expanded: string, ctx: Context) => Expression),
-      pre_evaluate: ((ctx: Context) => void),
-      post_evaluate: ((ctx: Context) => void),
-      src: SourceLocation?,
+      finalize?: ((expanded: string, ctx: Context) => Expression),
+      pre_evaluate?: ((ctx: Context) => void),
+      post_evaluate?: ((ctx: Context) => void),
+      src?: SourceLocation,
   ) {
       this.exp = exp;
-      this.finalize = finalize;
-      this.pre_evaluate = pre_evaluate;
-      this.post_evaluate = post_evaluate;
+      this.finalize = finalize ?? ((exp, _ctx) => exp);
+      this.pre_evaluate = pre_evaluate ?? (_ => {});
+      this.post_evaluate = post_evaluate ?? (_ => {});
       this.src = src;
   }
 }
@@ -375,11 +377,11 @@ export class Context {
         this.stack = this.stack.pop(exp.src);
       }
 
-      // If the invocation was successful, we made progress. We then continue by
-      // trying to evaluate the fresh WipExpansion, after setting its SourceLocation
-      // to that of its spawning Invocation.
       if (invoked instanceof WipExpansion) {
+        // If the invocation was successful, we made progress.
         this.made_progress_this_round = true;
+        // We then continue by trying to evaluate the fresh WipExpansion, after
+        // setting its SourceLocation to that of its spawning Invocation.
         invoked.src = exp.src;
         return this.do_evaluate(invoked);
       } else {
@@ -387,70 +389,80 @@ export class Context {
         return exp;
       }
     } else if (exp instanceof WipExpansion) {
-      // 
-    }
-  }
-}
+      // To evaluate a WipExpression, we
+      //    - update the call stack, then
+      //    - call its pre_evaluate lifecycle function, then
+      //    - evaluate its `exp`, then
+      //    - call its post_evaluate lifecycle function, and finally
+      //    - map the evaluation result through `finalize` if it was a string.
 
-export function do_evaluate(
-  expression: Expression,
-  ctx: Context,
-  args: Expression[],
-): [Expression, boolean] {
-  if (expression instanceof ExpandedMacro) {
-    const macro = expression.macro;
-    const expanded = expression.expanded;
-
-    if (macro.location) {
-      ctx.stack = ctx.stack.push(macro.location!);
-    }
-    
-    macro.top_down(ctx);
-    if (ctx.did_halt()) {
-      return [expression, false];
-    }
-
-    const [expanded_expanded, made_progress] = do_evaluate(expanded, ctx, args);
-    if (ctx.did_halt()) {
-      return [expression, false];
-    }
-    
-    if (typeof expanded_expanded === "string") {
-      const finalized = macro.finalize(expanded_expanded, ctx);
-      if (ctx.did_halt()) {
-        return [expression, false];
+      if (exp.src) {
+        this.stack = this.stack.push(exp.src);
       }
 
-      macro.bottom_up(ctx);
-      if (ctx.did_halt()) {
-        return [expression, false];
-      }
+      exp.pre_evaluate(this);
+      const evaluated = this.do_evaluate(exp.exp);
+      exp.post_evaluate(this);
 
-      if (macro.location) {
-        ctx.stack = ctx.stack.pop();
-      }
+      // We are now done with the WipExpansion for this round, whether successful or not.
+      if (exp.src) {
+          this.stack = this.stack.pop(exp.src);
+        }
 
-      if (finalized === null) {
-        return [expanded_expanded, false];
+      if (typeof evaluated === "string") {
+        // The WipExpansion is fully done, so we finalize. If the result is an Invocation
+        // or another WipExpansion, it takes on the SourceLocation of the original.
+        const finalized = exp.finalize(evaluated, this);
+        if (finalized instanceof Invocation || finalized instanceof WipExpansion) {
+          finalized.src = exp.src;
+        }
+
+        // Evaluation continues by substituting the result of `finalize` for the
+        // WipExpression.
+        return this.do_evaluate(finalized);
       } else {
-        return [finalized, true];
+        // Did not finish the WipEvaluation, try again next round.
+        return exp;
       }
     } else {
-      macro.bottom_up(ctx);
-      if (ctx.did_halt()) {
-        return [expression, false];
-      }
-      
-      if (macro.location) {
-        ctx.stack = ctx.stack.pop();
-      }
-      return [new ExpandedMacro(macro, expanded_expanded), made_progress];
+      // If typescript had a moderately sensible type system, this case would be unreachable.
+      throw new Error(`Tried to evaluate a value that is not an Expression.
+Someone somewhere did type-system shenanigans that went wrong.
+
+${exp}`);
     }
-  } else {
-    console.error(expression);
-    throw new Error("unreachable, or so they thought...");
+  }
+
+  // When evaluation halts because no macro makes any progress, we log the offending
+  // macros. More precisely, we log all Invocations and the WipExpansions whose
+  // expression is a string (all other WipExpansions are blocked from making progress
+  // by subexpressions).
+  log_active_leaves(exp: Expression) {
+    // Prepare for logging, then call a recursive subroutine to do the actual work.
+    this.console.group("Evaluation was blocked by:");
+    this.log_active_leaves_(exp);
+    this.console.groupEnd();
+  }
+
+  log_active_leaves_(exp: Expression) {
+    if (typeof exp === "string") {
+      // Do nothing with strings, strings do not block evaluation.
+    } else if (Array.isArray(exp)) {
+      // Log the leaves of all subexpressions.
+      exp.forEach(child => this.log_active_leaves_(child));
+    } else if (exp instanceof Invocation) {
+      // Any unresolved invocations have blocked expansion.
+      this.console.log(format_location(exp.src));
+    } else if (exp instanceof WipExpansion) {
+      if (typeof exp.exp === "string") {
+        this.console.log(format_location(exp.src));
+      } else {
+        this.log_active_leaves_(exp.exp);
+      }
+    }
   }
 }
+
 
 export function new_macro(
   expand: (args: Argument[], ctx: Context) => (Expression | null) = default_expand,
@@ -514,9 +526,16 @@ export function surpress_output(
   return new Invocation(macro, exps);
 }
 
+export interface SourceLocation {
+  file_name: string,
+  line_number: number,
+  column_number: number,
+  macro_name: string,
+}
+
 // Prett formatting for SourceLocations
-export function format_location(location: Location): string {
-  return `${Colors.bold(Colors.italic(location.method))} in ${style_file(location.file)}${Colors.yellow(`:${location.line}:${location.char}`)}`;
+export function format_location(src: SourceLocation): string {
+  return `${Colors.bold(Colors.italic(src.macro_name))} in ${style_file(src.file_name)}${Colors.yellow(`:${src.line_number}:${src.column_number}`)}`;
 }
 
 export function style_file(s: string): string {
