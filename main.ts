@@ -242,6 +242,10 @@ export class Context {
   // evaluation round, we track whether at least one impure expression returned
   // non-null in the current round.
   private madeProgressThisRound: boolean;
+  // Track whether at least one warning or error was logged.
+  private warnOrWorse;
+  // Only log messages of at least this severity.
+  private loggingLevel: LoggingLevel;
   // The Context provides several methods for logging. This field provides the
   // backend for the logging methods.
   private console: Console;
@@ -252,13 +256,15 @@ export class Context {
    * Defaults to a wrapper around the global console that does not log any
    * `trace` or `info` messages.
    */
-  constructor(console_?: Console) {
+  constructor(loggingLevel?: LoggingLevel, console_?: Console) {
     this.state = new Map();
     this.stack = new_stack();
     this.haveToMakeProgress = false;
     this.round = 0;
     this.madeProgressThisRound = false;
+    this.warnOrWorse = false;
 
+    this.loggingLevel = loggingLevel ?? "warn";
     this.console = console_ ? console_ : console /*the global typescript one*/;
   }
 
@@ -311,7 +317,9 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public trace(...data: any[]): void {
-    this.console.info(Colors.dim("[trace]"), ...data);
+    if (logging_level_lte(this.loggingLevel, "trace")) {
+      this.console.trace(Colors.dim("[trace]"), ...data);
+    }
   }
 
   /**
@@ -320,12 +328,14 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public trace_at(...data: any[]): void {
-    this.console.info(
-      Colors.dim("[trace]"),
-      ...data,
-      "at",
-      formatDebuggingInformation(this.getCurrentDebuggingInformation()),
-    );
+    if (logging_level_lte(this.loggingLevel, "trace")) {
+      this.console.trace(
+        Colors.dim("[trace]"),
+        ...data,
+        "at",
+        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+      );
+    }
   }
 
   /**
@@ -333,7 +343,9 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public info(...data: any[]): void {
-    this.console.info(Colors.blue("[info]"), ...data);
+    if (logging_level_lte(this.loggingLevel, "info")) {
+      this.console.info(Colors.blue("[info]"), ...data);
+    }
   }
 
   /**
@@ -342,12 +354,14 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public info_at(...data: any[]): void {
-    this.console.info(
-      Colors.green("[info]"),
-      ...data,
-      "at",
-      formatDebuggingInformation(this.getCurrentDebuggingInformation()),
-    );
+    if (logging_level_lte(this.loggingLevel, "info")) {
+      this.console.info(
+        Colors.green("[info]"),
+        ...data,
+        "at",
+        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+      );
+    }
   }
 
   /**
@@ -355,7 +369,10 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public warn(...data: any[]): void {
-    this.console.warn(Colors.yellow("[warn]"), ...data);
+    this.warnOrWorse = true;
+    if (logging_level_lte(this.loggingLevel, "warn")) {
+      this.console.warn(Colors.yellow("[warn]"), ...data);
+    }
   }
 
   /**
@@ -364,12 +381,15 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public warn_at(...data: any[]): void {
-    this.console.warn(
-      Colors.yellow("[warn]"),
-      ...data,
-      "at",
-      formatDebuggingInformation(this.getCurrentDebuggingInformation()),
-    );
+    this.warnOrWorse = true;
+    if (logging_level_lte(this.loggingLevel, "warn")) {
+      this.console.warn(
+        Colors.yellow("[warn]"),
+        ...data,
+        "at",
+        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+      );
+    }
   }
 
   /**
@@ -377,7 +397,10 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public error(...data: any[]): void {
-    this.console.error(Colors.red("[err]"), ...data);
+    this.warnOrWorse = true;
+    if (logging_level_lte(this.loggingLevel, "error")) {
+      this.console.error(Colors.red("[err]"), ...data);
+    } 
   }
 
   /**
@@ -385,12 +408,23 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public error_at(...data: any[]): void {
-    this.console.warn(
-      Colors.red("[err]"),
-      ...data,
-      "at",
-      formatDebuggingInformation(this.getCurrentDebuggingInformation()),
-    );
+    this.warnOrWorse = true;
+    if (logging_level_lte(this.loggingLevel, "error")) {
+      this.console.warn(
+        Colors.red("[err]"),
+        ...data,
+        "at",
+        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+      );
+    }
+  }
+
+  /**
+   * Return if at least one warning or error logging method was called,
+   * regardless of the logging level.
+   */
+  public didWarnOrWorse() {
+    return this.warnOrWorse;
   }
 
   /**
@@ -582,5 +616,19 @@ export class Context {
     } else if (expIsDebug(exp)) {
       this.doLogBlockingExpressions(exp.debug.exp, exp.debug.info);
     }
+  }
+}
+
+export type LoggingLevel = "trace" | "info" | "warn" | "error";
+
+function logging_level_lte(l1: LoggingLevel, l2: LoggingLevel): boolean {
+  if (l1 === "trace") {
+    return true;
+  } else if (l1 === "info" && l2 != "trace") {
+    return true;
+  } else if (l1 === "warn" && l2 != "trace" && l2 != "info") {
+    return true;
+  } else {
+    return l2 === "error";
   }
 }
