@@ -767,3 +767,14 @@ function maybeWrapWithInfo(
     return { debug: { exp, info } };
   }
 }
+
+export function Fragment(
+  _macro: MacromaniaIntrinsic | ((props: any) => Expression),
+  props: any,
+  _key: undefined,
+  _is_static_children: boolean,
+  _source: JsxSource,
+  _self: any,
+): Expression {
+  return props.args;
+}
