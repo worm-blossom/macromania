@@ -400,7 +400,7 @@ export class Context {
     this.warnOrWorse = true;
     if (logging_level_lte(this.loggingLevel, "error")) {
       this.console.error(Colors.red("[err]"), ...data);
-    } 
+    }
   }
 
   /**
@@ -598,7 +598,10 @@ export class Context {
     this.console.groupEnd();
   }
 
-  private doLogBlockingExpressions(exp: Expression, info: DebuggingInformation) {
+  private doLogBlockingExpressions(
+    exp: Expression,
+    info: DebuggingInformation,
+  ) {
     if (typeof exp === "string") {
       return;
     } else if (Array.isArray(exp)) {
@@ -630,5 +633,137 @@ function logging_level_lte(l1: LoggingLevel, l2: LoggingLevel): boolean {
     return true;
   } else {
     return l2 === "error";
+  }
+}
+
+/*
+ * And now for jsx shenanigans!
+ */
+
+// Intrinsic elements are those with a lowercase name, in React
+// those would be html elements.
+type MacromaniaIntrinsic =
+  | "omnomnom"
+  | "impure"
+  | "preprocess"
+  | "postprocess"
+  | "map"
+  | "lifecycle";
+
+type PropsOmnomnom = { args: Expression };
+type PropsImpure = { fun: (ctx: Context) => Expression | null };
+type PropsPreprocess = { args: Expression; fun: (ctx: Context) => void };
+type PropsPostprocess = { args: Expression; fun: (ctx: Context) => void };
+type PropsMap = { args: Expression; fun: (ctx: Context) => void };
+type PropsLifecycle = {
+  args: Expression;
+  pre: (ctx: Context) => void;
+  post: (ctx: Context) => void;
+};
+
+// This namespace configures typechecking for jsx in tsx files.
+declare namespace JSX {
+  // We expect all jsx to turn into Expressions.
+  // https://devblogs.microsoft.com/typescript/announcing-typescript-5-1-beta/#decoupled-type-checking-between-jsx-elements-and-jsx-tag-types
+  // https://www.typescriptlang.org/docs/handbook/jsx.html#the-jsx-result-type
+  export type ElementType = Expression;
+
+  // Configure the props of the intrinsic elements.
+  //
+  // https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
+  // https://www.typescriptlang.org/docs/handbook/jsx.html#attribute-type-checking
+  interface IntrinsicElements {
+    omnomnom: PropsOmnomnom;
+    impure: PropsImpure;
+    preprocess: PropsPreprocess;
+    postprocess: PropsPostprocess;
+    map: PropsMap;
+    lifecycle: PropsLifecycle;
+  }
+
+  // Where React uses `children`, we use `args`.
+  interface ElementChildrenAttribute {
+    args: {};
+  }
+}
+
+// Source information provided by the react-jsxdev jsx-transform
+interface JsxSource {
+  fileName: string;
+  lineNumber: number;
+  columnNumber: number;
+}
+
+function jsxSourceToDebuggingInformation(
+  name: string,
+  src: JsxSource,
+): DebuggingInformation {
+  return {
+    file: src.fileName,
+    line: src.lineNumber,
+    column: src.columnNumber,
+    name,
+  };
+}
+
+// jsxFactory for the ASCP, to be used with jsx-transform `react-jsxdev`
+// https://www.typescriptlang.org/tsconfig#jsxFactory
+// https://www.typescriptlang.org/tsconfig#jsx
+// https://babeljs.io/docs/babel-plugin-transform-react-jsx-development
+export function ascpFactory(
+  macro: MacromaniaIntrinsic | ((props: any) => Expression),
+  props: any,
+  _key: undefined,
+  _is_static_children: boolean,
+  source: JsxSource,
+  _self: any,
+): Expression {
+  // console.log(macro);
+  // console.log(_self);
+  // console.log();
+
+  const info = jsxSourceToDebuggingInformation(
+    typeof macro === "string" ? macro : macro.name,
+    source,
+  );
+
+  if (macro === "omnomnom") {
+    return maybeWrapWithInfo({
+      map: { exp: props.args, fun: (_: string) => "" },
+    }, info);
+  } else if (macro === "impure") {
+    return maybeWrapWithInfo({ impure: props.fun }, info);
+  } else if (macro === "preprocess") {
+    return maybeWrapWithInfo({
+      preprocess: { exp: props.args, fun: props.fun },
+    }, info);
+  } else if (macro === "postprocess") {
+    return maybeWrapWithInfo({
+      postprocess: { exp: props.args, fun: props.fun },
+    }, info);
+  } else if (macro === "map") {
+    return maybeWrapWithInfo({
+      map: { exp: props.args, fun: props.fun },
+    }, info);
+  } else if (macro === "lifecycle") {
+    return maybeWrapWithInfo({
+      preprocess: {
+        exp: { postprocess: { exp: props.args, fun: props.post } },
+        fun: props.pre,
+      },
+    }, info);
+  } else {
+    return maybeWrapWithInfo(macro(props), info);
+  }
+}
+
+function maybeWrapWithInfo(
+  exp: Expression,
+  info: DebuggingInformation,
+): Expression {
+  if (isCurrentlyEvaluating) {
+    return exp;
+  } else {
+    return { debug: { exp, info } };
   }
 }
