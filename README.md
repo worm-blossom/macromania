@@ -88,7 +88,7 @@ To create a macro that can take an arbitrary number of args, use `args: Expressi
 
 Any keys other than args can be used to define props:
 
-```ts
+```tsx
 function Exclaim({repetitions: number, args: Expression}): Expression {
     return [args, "!".repeat(repetitions)];
 }
@@ -104,7 +104,7 @@ So far, we can basically concatenate strings, create them with functions, and us
 
 As a first demonstration, we define a simple counter macro that evaluates to an incrementing number each time.
 
-```ts
+```tsx
 // Create a getter and a setter for some macro-specific state.
 const [getCount, setCount] = createSubstate<number /* type of the state*/>(
     "Counter", // an arbitrary name for debugging purposes
@@ -129,21 +129,216 @@ ctx.evaluate(<><Count /><Count /> <Count /></>);
 
 This example introduces a new kind of expression: an *impure* expression is an object with a single field `impure`, whose value is a function that takes a `Context` and returns an expression. This function can read to and write from the `Context` via getters and setters created by the `createSubstate` function. The same `Context` is passed to separate invocations of the `Count` macro, mutating the state allows earlier invocations to pass information to later invocations.
 
-- simple defref, logging error and halting when undefined
-- use-before-define defref
-- defref with warning and placeholder when undefined
-- `impure` intrinsic
+Impure expressions are mostly used as an internal representation for macromania. Macro authors would typically use the `impure` intrinsic for creating them; here is an example where we build a simple system of definitions and references:
 
-- Lifecycle Expressions
-    - indentation macros
-    - `preprocess` and `postprocess` intrinsics
-    - `lifecycle` intrinsic
+```tsx
+// Create a getter and a setter for our state: a mapping from short ids to
+// links.
+const [getDefs, _setDefs] = createSubstate<Map<string, string>>(
+    "Definitions", // an arbitrary name for debugging purposes
+    new Map(), // the initial state
+);
 
-- Mapping Expressions
-    - Yell macro
-    - returning non-string expressions
+// Registers a short name for a link, does not produce any output.
+function Def({name: string, link: string}): Expression {
+    const updateState = (ctx: Context) => {
+        getDefs(ctx).set(name, link);
+        return "";
+    };
+    return <impure fun={updateState} />;
+}
 
-- Miscelaneous
-    - debugging expressions and intrinsic
-    - omnomnom intrinsic
-    - encourage to read the source
+// Given a registered name, outputs the associated link.
+function Ref({name: string}): Expression {
+    const fun = (ctx: Context) => {
+        const link = getDefs(ctx).get(name);
+        if (link) {
+            return `<a href="${link}">${name}</a>`;
+        } else {
+            ctx.error(`Undefined name ${name}.`);
+            ctx.halt();
+        }
+    };
+    return <impure fun={fun} />
+}
+
+const ctx = new Context();
+ctx.evaluate(<>
+    <Def name="squirrel" link="https://en.wikipedia.org/wiki/Squirrel" />
+    Look, a <Ref name="squirrel" />!
+</>);
+// returns `Look, a <a href="https://en.wikipedia.org/wiki/Squirrel">squirrel</a>!`
+```
+
+This example also demonstrates two methods of `Context`: `error_at` prints an error message, and `halt` aborts macro expansion. You can find all methods of the `Context` class [here](TODO).
+
+These macros require definitions to occur before references, otherwise evaluation fails:
+
+```tsx
+const ctx = new Context();
+ctx.evaluate(<>
+    <Ref name="squirrel" /> ahead!
+    <Def name="squirrel" link="https://en.wikipedia.org/wiki/Squirrel" />
+</>);
+// Returns null to indicate evaluation failure.
+```
+
+We can fix this by returning `null` from the impure function, which causes the expression to be skipped and schedules it for later reevaluation.
+
+```tsx
+// Given a name, outputs the associated link.
+function PatientRef({name: string}): Expression {
+    const fun = (ctx: Context) => {
+        const link = getDefs(ctx).get(name);
+        if (link) {
+            return `<a href="${link}">${name}</a>`;
+        } else {
+            return null
+        }
+    };
+    return <impure fun={fun} />
+}
+
+const ctx = new Context();
+ctx.evaluate(<>
+    <PatientRef name="squirrel" /> ahead!
+    <Def name="squirrel" link="https://en.wikipedia.org/wiki/Squirrel" />
+</>);
+// returns `<a href="https://en.wikipedia.org/wiki/Squirrel">squirrel</a> ahead!`
+```
+
+If we reference a name that never gets defined, the evaluator recognizes that macro expansion stops making progress at some point, the `evaluate` method then returns `null` to indicate failure. That's a lot nicer than goin into an infinite loop.
+
+```tsx
+const ctx = new Context();
+ctx.evaluate(<>
+    <PatientRef name="squirrel" />!
+</>);
+// returns null
+```
+
+When the evaluator detects that evaluation does not progress, it attemps reevaluation a final time. Macros can query whether they are being evaluated in a final attempt:
+
+```tsx
+// Given a name, outputs the associated link.
+function MostlyPatientRef({name: string}): Expression {
+    const fun = (ctx: Context) => {
+        const link = getDefs(ctx).get(name);
+        if (link) {
+            return `<a href="${link}">${name}</a>`;
+        } else {
+            if (ctx.mustMakeProgress()) {
+                ctx.warn("Unknown name: ", name);
+                return "[unknown name]";
+            } else {
+                return null;
+            }
+        }
+    };
+    return <impure fun={fun} />
+}
+
+const ctx = new Context();
+ctx.evaluate(<>
+    <MostlyPatientRef name="squirrel" /> ahead!
+</>);
+// returns `[unknown name] ahead!`
+```
+
+### Lifecycle Expressions
+
+The `lifecycle` intrinsic allows us to wrap an expression with functions that are called for their side effects before or after the wrapped expression gets evaluated.
+
+```tsx
+// Create a getter and a setter for indentation depth.
+const [getIndent, setIndent] = createSubstate<number /* type of the state*/>(
+    "Indentation", // an arbitrary name for debugging purposes
+    0, // the initial state
+);
+
+// Given a name, outputs the associated link.
+function Indent({args: Expression}): Expression {
+    const pre = (ctx: Context) => setIndent(ctx, getIndent(ctx) += 1);
+    const post = (ctx: Context) => setIndent(ctx, getIndent(ctx) -= 1);
+    return <lifecycle preprocess={post} postprocess={post}>args</lifecycle>;
+}
+
+// Output indentation according to the current level.
+function Indentation({}): Expression {
+    const fun = (ctx: Context) => "  ".repeat(getIndent(ctx));
+    return <impure fun={fun} />
+}
+
+// Pretty-printed div macro
+function Div({args: Expression}): Expression {
+    return ["<div>\n", <Indent><Indentation />args</Indent>, "\n</div>"];
+}
+```
+
+Note that the lifecycle functions get called *every time* the wrapped expression is evaluated; this gracefully handles wrapped impure expressions that require several evaluation attempts.
+
+### Mapping Expressions
+
+The third and last major kind of expressions are *mapping expressions*, which are created via the `map` intrinsic. They wwrap an expression, and once that expresson has been evaluated to a string, it is given to a function that can turn it into an arbitrary new expression.
+
+```tsx
+function Yell({args: Expression}): Expression {
+    const fun = (evaled: string, ctx: Context) => evaled.toUpperCase();
+    return <map fun={fun}>args</map>;
+}
+
+const ctx = new Context();
+ctx.evaluate(<Yell>Help!</Yell>);
+// returns "HELP!"
+```
+
+### Miscelaneous
+
+The `omnomnom` intrinsic wraps an expression, this expression gets evaluated for its side-efect, but the whole thing evaluates to the empty string.
+
+```tsx
+const ctx = new Context();
+ctx.evaluate(<omnomnom>Actually, I believe the artist wants...</omnomnom>);
+// returns ""
+```
+
+The `Context` keeps track of a stacktrace of macro invocations in user code, this stacktrace does not contain macros that were emitted from other macros. You can use this to build pretty helpful error messages, here is an example for the link name definition macros that detecs duplicate definition attempts and logs the sites of the original definition and of the second definition attempt.
+
+```tsx
+interface DefinitionInfo {
+    link: string;
+    src: DebuggingInformation;
+};
+
+const [getDefs, _setDefs] = createSubstate<Map<string, DefinitionInfo>>(
+    "Definitions",
+    new Map(),
+);
+
+// Registers a short name for a link, does not produce any output.
+function Def({name: string, link: string}): Expression {
+    const updateState = (ctx: Context) => {
+        const defs = getDefs(ctx);
+        if (!defs.has()) {
+            defs.set(name, { link, src: ctx.getCurrentDebuggingInformation()});
+        } else {
+            // error_at logs the source location of this macro invocation
+            ctx.error_at("Duplicate definition ", name);
+            ctx.error("First defined at ", formatDebuggingInformation(defs.get(name)!.src));
+            ctx.halt();
+        }
+        return "";
+    };
+    return <impure fun={updateState} />;
+}
+
+const ctx = new Context();
+ctx.evaluate(<>
+    <Def name="turtle" href="https://en.wikipedia.org/wiki/Turtle"/>
+    <Def name="turtle" href="https://en.wikipedia.org/wiki/Turtle_(robot)"/>
+</>);
+// logs:
+// TODO
+```
+
+This tutorial has gien you enough information to do some damage with macromania. If you want to develop a fuller understanding of the library, we recommend you read the [source](TODO). The code is well-commented, but more importantly, it is simple and short. As code should be.
