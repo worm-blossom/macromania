@@ -1,6 +1,15 @@
-////////////////
-// Macromania //
-////////////////
+/*
+
+888b     d888                                                                   d8b
+8888b   d8888                                                                   Y8P
+88888b.d88888
+888Y88888P888  8888b.   .d8888b 888d888 .d88b.  88888b.d88b.   8888b.  88888b.  888  8888b.
+888 Y888P 888     "88b d88P"    888P"  d88""88b 888 "888 "88b     "88b 888 "88b 888     "88b
+888  Y8P  888 .d888888 888      888    888  888 888  888  888 .d888888 888  888 888 .d888888
+888   "   888 888  888 Y88b.    888    Y88..88P 888  888  888 888  888 888  888 888 888  888
+888       888 "Y888888  "Y8888P 888     "Y88P"  888  888  888 "Y888888 888  888 888 "Y888888
+
+*/
 
 import * as Colors from "https://deno.land/std@0.204.0/fmt/colors.ts";
 import { new_stack, Stack } from "./stack.ts";
@@ -199,8 +208,8 @@ export function createSubstate<S>(
     const got = ctx.getState().get(key);
 
     if (got === undefined) {
-      ctx.getState().set(key, initial);
-      return initial;
+      ctx.getState().set(key, structuredClone(initial));
+      return ctx.getState().get(key)!;
     } else {
       return got;
     }
@@ -213,20 +222,12 @@ export function createSubstate<S>(
   return [get, set];
 }
 
-// Global flag to track whether we are currently evaluating or not.
-// While evaluating, do not wrap jsx macros with StacktracingExpressions.
-let isCurrentlyEvaluating = false;
-
 // Throwing the following symbol immediately terminates evaluation. This value
 // is not exposed, it is an implementation detail of `Context.halt()`.
 const haltEvaluation = Symbol("Halt Evaluation");
 
 /**
  * The state that is threaded through an evaluation process.
- *
- * The functions of {@linkcode DelayedExpression},
- * {@linkcode LifecyclingExpression}, and{@linkcode MappingExpression} can
- * access the `Context`.
  */
 export class Context {
   // The shared mutable state.
@@ -251,10 +252,16 @@ export class Context {
   private console: Console;
 
   /**
-   * Create a new `Context`, logging to the given `Console`.
+   * Create a new `Context`, logging at the given logging lever to the given
+   * `Console`.
+   * @param loggingLevel The logging level below which to not log anything.
+   * Defaults to `"warn"`.
    * @param console_ The `Console` to use for the logging methods on `Context`.
-   * Defaults to a wrapper around the global console that does not log any
-   * `trace` or `info` messages.
+   * Defaults to the global console.
+   */
+  /**
+   * @param loggingLevel
+   * @param console_
    */
   constructor(loggingLevel?: LoggingLevel, console_?: Console) {
     this.state = new Map();
@@ -294,9 +301,9 @@ export class Context {
   }
 
   /**
-   * When no {@linkcode DelayedExpression} makes progress in an evaluation
+   * When no impure expression makes progress in an evaluation
    * round, another round is started, in which this function returns `true`.
-   * If no {@linkcode DelayedExpression} makes progress in that round either,
+   * If no impure expression makes progress in that round either,
    * evaluation stops.
    *
    * @returns `true` if progress must be made, `false` otherwise.
@@ -420,11 +427,19 @@ export class Context {
   }
 
   /**
-   * Return if at least one warning or error logging method was called,
+   * Return whether at least one warning or error logging method was called,
    * regardless of the logging level.
    */
   public didWarnOrWorse() {
     return this.warnOrWorse;
+  }
+
+  /**
+   * Return whether evaluation has been given up because no progress could
+   * be made.
+   */
+  public didGiveUp() {
+    return this.mustMakeProgress() && !this.madeProgressThisRound;
   }
 
   /**
@@ -523,7 +538,12 @@ export class Context {
       this.stack = this.stack.push(exp.debug.info);
       const evaluated = this.do_evaluate(exp.debug.exp);
       this.stack.pop();
-      return evaluated;
+      if (typeof evaluated === "string") {
+        return evaluated;
+      } else {
+        exp.debug.exp = evaluated;
+        return exp;
+      }
     } else {
       // If typescript had a stricter type system, this case would be unreachable.
       throw new Error(`Tried to evaluate a value that is not an Expression.
@@ -537,9 +557,6 @@ export class Context {
    * Evaluate an expression to a string, or return `null` in case of failure.
    */
   public evaluate(expression: Expression): string | null {
-    // Do not wrap tsx-generated Expressions in debug expressions anymore.
-    isCurrentlyEvaluating = true;
-
     // We catch any thrown `halt_evaluation` values.
     try {
       // Evaluation proceeds in a loop. Try to evaluate the toplevel
@@ -571,15 +588,9 @@ export class Context {
       }
 
       // End of the evaluation loop. We managed to covert the initial
-      // Expression into a string, so we proudly return it (but not after
-      // updating the global flag to indicate we are not evaluating anymore).
-      isCurrentlyEvaluating = false;
-
+      // Expression into a string, so we proudly return it.
       return exp;
     } catch (err) {
-      // Evaluation has definitely ended, regardless of which value was thrown.
-      isCurrentlyEvaluating = false;
-
       // If the thrown value was `halt_evaluation`, we return `null` to cleanly
       // indicate evaluation failure. All other exceptions are indeed
       // exceptional and are simply rethrown.
@@ -593,6 +604,8 @@ export class Context {
 
   private logBlockingExpressions(exp: Expression) {
     // Prepare for logging, then call a recursive subroutine to do the actual work.
+    console.log(exp);
+
     this.console.group("Evaluation was blocked by:");
     this.doLogBlockingExpressions(exp, {});
     this.console.groupEnd();
@@ -661,15 +674,15 @@ type PropsLifecycle = {
   post: (ctx: Context) => void;
 };
 
-// This namespace configures typechecking for jsx in tsx files.
-declare namespace JSX {
-  // We expect all jsx to turn into Expressions.
+export declare namespace JSX {
+  // All jsx evaluates to a number.
   // https://devblogs.microsoft.com/typescript/announcing-typescript-5-1-beta/#decoupled-type-checking-between-jsx-elements-and-jsx-tag-types
   // https://www.typescriptlang.org/docs/handbook/jsx.html#the-jsx-result-type
-  export type ElementType = Expression;
+  type Element = Expression;
 
-  // Configure the props of the intrinsic elements.
-  //
+  // export type ElementType = number;
+
+  // Configure the intrinsic elements and their props.
   // https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
   // https://www.typescriptlang.org/docs/handbook/jsx.html#attribute-type-checking
   interface IntrinsicElements {
@@ -681,9 +694,14 @@ declare namespace JSX {
     lifecycle: PropsLifecycle;
   }
 
-  // Where React uses `children`, we use `args`.
+  interface ElementAttributesProperty {
+    // deno-lint-ignore ban-types
+    props: {}; // specify the property name to use
+  }
+
   interface ElementChildrenAttribute {
-    args: {};
+    // deno-lint-ignore ban-types
+    children: {}; // specify children name to use
   }
 }
 
@@ -706,26 +724,33 @@ function jsxSourceToDebuggingInformation(
   };
 }
 
+// Track how many macros are currently on the js callstack.
+// This is not concerned with evaluation-time invokation of
+// functions on expressions, but with turning user input into
+// the initial expression to evaluate.
+let macroDepth = 0;
+
 // jsxFactory for the ASCP, to be used with jsx-transform `react-jsxdev`
 // https://www.typescriptlang.org/tsconfig#jsxFactory
 // https://www.typescriptlang.org/tsconfig#jsx
 // https://babeljs.io/docs/babel-plugin-transform-react-jsx-development
-export function ascpFactory(
+export function jsxDEV(
+  // deno-lint-ignore no-explicit-any
   macro: MacromaniaIntrinsic | ((props: any) => Expression),
+  // deno-lint-ignore no-explicit-any
   props: any,
   _key: undefined,
   _is_static_children: boolean,
-  source: JsxSource,
+  source: JsxSource | undefined,
+  // deno-lint-ignore no-explicit-any
   _self: any,
 ): Expression {
-  // console.log(macro);
-  // console.log(_self);
-  // console.log();
-
-  const info = jsxSourceToDebuggingInformation(
-    typeof macro === "string" ? macro : macro.name,
-    source,
-  );
+  const info = source
+    ? jsxSourceToDebuggingInformation(
+      typeof macro === "string" ? macro : macro.name,
+      source,
+    )
+    : undefined;
 
   if (macro === "omnomnom") {
     return maybeWrapWithInfo({
@@ -753,15 +778,22 @@ export function ascpFactory(
       },
     }, info);
   } else {
-    return maybeWrapWithInfo(macro(props), info);
+    macroDepth += 1;
+    const exp = macro(props);
+    macroDepth -= 1;
+    return maybeWrapWithInfo(exp, info);
   }
 }
 
 function maybeWrapWithInfo(
   exp: Expression,
-  info: DebuggingInformation,
+  info?: DebuggingInformation,
 ): Expression {
-  if (isCurrentlyEvaluating) {
+  // If macroDepth > 0, then we are dealing with an expression that was not
+  // supplied by the user, but which is an implementation detail of a macro,
+  // and should hence not show up in stacktraces.
+  // info is `undefined` for jsx fragments, which we wish to ignore anyways.
+  if (macroDepth > 0 || !info) {
     return exp;
   } else {
     return { debug: { exp, info } };
@@ -769,12 +801,7 @@ function maybeWrapWithInfo(
 }
 
 export function Fragment(
-  _macro: MacromaniaIntrinsic | ((props: any) => Expression),
-  props: any,
-  _key: undefined,
-  _is_static_children: boolean,
-  _source: JsxSource,
-  _self: any,
+  { children }: { children: Expression[] },
 ): Expression {
-  return props.args;
+  return children;
 }
