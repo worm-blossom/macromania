@@ -157,7 +157,7 @@ export interface DebuggingInformation {
 
 /**
  * Style {@linkcode DebuggingInformation} for terminal output.
- * @param info The {@linkcode DebuggingInformation} to tyle
+ * @param info The {@linkcode DebuggingInformation} to style
  * @returns The {@linkcode DebuggingInformation}, converted to a string with
  * pretty ansi escapes.
  */
@@ -235,7 +235,7 @@ export class Context {
   // Like a callstack, but for the DebuggingInformation of
   // debug expressions.
   private stack: Stack<DebuggingInformation>;
-  // True when evaluation would halt if no impure expression rturns non-null.
+  // True when evaluation would halt if no impure expression returns non-null.
   private haveToMakeProgress: boolean;
   // Count the number of evaluation rounds.
   private round: number;
@@ -252,9 +252,8 @@ export class Context {
   private console: Console;
 
   /**
-   * Create a new `Context`, logging at the given logging lever to the given
-   * `Console`.
-   * @param loggingLevel The logging level below which to not log anything.
+   * Create a new `Context`, logging to the given `Console`.
+   * @param loggingLevel The minimum severity of log methods to actually log.
    * Defaults to `"warn"`.
    * @param console_ The `Console` to use for the logging methods on `Context`.
    * Defaults to the global console.
