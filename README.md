@@ -6,7 +6,7 @@ Text generation made ~~easy~~ simple.
 <Definition id="tree" title="Tree">
   A <Def>tree</Def> is a connected graph on <Tex>n</Tex> vertices
   with <Tex>n - 1</Tex> edges<Cite id="Diestel2016" />.
-</Definition>;
+</Definition>
 ```
 
 Macromania is a typescript-embedded domain-specific language for creating
