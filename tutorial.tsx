@@ -8,8 +8,9 @@
  */
 
 /*
-Welcome to the macromania tutorial. This file walks you through all the
-features of macromania. It also happens to double as a test suite.
+Welcome to the Macromania tutorial. You can start reading this file without
+knowing anything about Macromania. The tutorial walks you through all the
+features of Macromania. It also happens to double as a test suite.
 */
 import { assertEquals } from "https://deno.land/std@0.213.0/assert/mod.ts";
 
@@ -18,10 +19,10 @@ import { assertEquals } from "https://deno.land/std@0.213.0/assert/mod.ts";
 ///////////////////
 
 /*
-Macromania defines a type `Expression`. You give macromania an `Expression`, and
+Macromania defines a type `Expression`. You give Macromania an `Expression`, and
 it expands the expression into a string.
 */
-import { Context, Expression } from "../main.ts";
+import { Context, Expression } from "./main.ts";
 
 /*
 The most basic expression is a string, which evaluates to itself:
@@ -33,7 +34,7 @@ Deno.test("string expression", () => {
 });
 
 /*
-This snippet has demonstrated the fundamental working of macromania. You create
+This snippet has demonstrated the fundamental working of Macromania. You create
 a new `Context`, pass an `Expression` (in this case, a string) to its
 `evaluate` function, and get the expanded expression back.
 
@@ -177,14 +178,14 @@ Deno.test("jsx props", () => {
 /*
 So far, we can basically concatenate strings, create them with functions, and
 use jsx. That is not particularly impressive. But we are now ready to delve
-into the reason why macromania is so powerful: macros can be stateful, one
+into the reason why Macromania is so powerful: macros can be stateful, one
 invocation of a macro can influence other invocations.
 
 As a first demonstration, we define a simple counter macro that evaluates to an
 incrementing number each time.
 */
 
-import { createSubstate } from "../main.ts";
+import { createSubstate } from "./main.ts";
 
 Deno.test("counter macro", () => {
   // Create a getter and a setter for some macro-specific state.
@@ -224,7 +225,7 @@ invocations.
 */
 
 /*
-Impure expressions are mostly used as an internal representation for macromania.
+Impure expressions are mostly used as an internal representation for Macromania.
 Macro authors would typically use the `impure` intrinsic for creating them; here
 is an example where we build a simple system of definitions and references:
 */
@@ -367,3 +368,123 @@ Deno.test("defs and refs", () => {
   );
   assertEquals(got5, `[unknown name] ahead!`);
 });
+
+///////////////////////////
+// Lifecycle Expressions //
+///////////////////////////
+
+/*
+The `lifecycle` intrinsic allows us to wrap an expression with functions that
+are called for their side effects before or after the wrapped expression gets
+evaluated.
+
+In the following example, we build a macro for nested markdown sections that
+automatically uses the correkt markup for headings.
+*/
+// Create a getter and a setter for section depth.
+Deno.test("nested markdown sections", () => {
+  const [getDepth, setDepth] = createSubstate<number>(
+    "Section Depth",
+    0,
+  );
+
+  // Render the markup for a heading.
+  function AutoHeading(
+    { children }: { children: Expression },
+  ): Expression {
+    const fun = (ctx: Context) => {
+      return <>{"#".repeat(getDepth(ctx))} {children}{"\n"}</>;
+    };
+    return <impure fun={fun} />;
+  }
+
+  // Render the markup for a section.
+  function Section(
+    { children, title }: { children: Expression; title: Expression },
+  ): Expression {
+    const pre = (ctx: Context) => setDepth(ctx, getDepth(ctx) + 1);
+    const post = (ctx: Context) => setDepth(ctx, getDepth(ctx) - 1);
+    return (
+      <lifecycle pre={pre} post={post}>
+        <>
+          <AutoHeading>{title}</AutoHeading>
+          {children}
+        </>
+      </lifecycle>
+    );
+  }
+
+  const ctx = new Context();
+  const got = ctx.evaluate(
+    <Section title="My Text">
+      <>
+        Bla bla bla{"\n"}
+        <Section title="Subsection 1">Hi!{"\n"}</Section>
+        <Section title="Subsection 2">Bye!{"\n"}</Section>
+      </>
+    </Section>,
+  );
+  assertEquals(
+    got,
+    `# My Text
+Bla bla bla
+## Subsection 1
+Hi!
+## Subsection 2
+Bye!
+`,
+  );
+});
+
+/*
+Note that the lifecycle functions get called _every time_ the wrapped expression
+is evaluated; this gracefully handles wrapped impure expressions that require
+several evaluation attempts.
+*/
+
+/////////////////////
+// Map Expressions //
+/////////////////////
+
+/*
+The third and last major kind of expressions are _mapping expressions_, which
+are created via the `map` intrinsic. They wrap an expression, and once that
+expression has been evaluated to a string, it is given to a function that can
+turn it into an arbitrary new expression.
+*/
+Deno.test("yell", () => {
+  function Yell({ children }: { children: Expression }): Expression {
+    const fun = (evaled: string, ctx: Context) => evaled.toUpperCase();
+    return <map fun={fun}>{children}</map>;
+  }
+
+  const ctx = new Context();
+  const got = ctx.evaluate(<Yell>Help!</Yell>);
+  assertEquals(got, "HELP!");
+});
+
+///////////////////
+// Miscellaneous //
+///////////////////
+
+/*
+The `omnomnom` intrinsic wraps an expression. This expression gets evaluated for
+any side-effects, but the intrinsic then evaluates to the empty string.
+*/
+Deno.test("omnomnom", () => {
+  const ctx = new Context();
+  const got = ctx.evaluate(
+    <omnomnom>Actually, I believe the artist *really* wants to...</omnomnom>,
+  );
+  assertEquals(got, "");
+});
+
+/*
+And that really is it.
+
+To develop a complete understanding of Macromaia's workings, We recommend
+reading the source code. It is pretty straightforward, well-commented, and not
+much longer than this tutorial.
+
+Have fun building some macros!
+*/

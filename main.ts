@@ -603,8 +603,6 @@ export class Context {
 
   private logBlockingExpressions(exp: Expression) {
     // Prepare for logging, then call a recursive subroutine to do the actual work.
-    console.log(exp);
-
     this.console.group("Evaluation was blocked by:");
     this.doLogBlockingExpressions(exp, {});
     this.console.groupEnd();
@@ -657,20 +655,19 @@ function logging_level_lte(l1: LoggingLevel, l2: LoggingLevel): boolean {
 type MacromaniaIntrinsic =
   | "omnomnom"
   | "impure"
-  | "preprocess"
-  | "postprocess"
   | "map"
   | "lifecycle";
 
-type PropsOmnomnom = { args: Expression };
+type PropsOmnomnom = { children: Expression };
 type PropsImpure = { fun: (ctx: Context) => Expression | null };
-type PropsPreprocess = { args: Expression; fun: (ctx: Context) => void };
-type PropsPostprocess = { args: Expression; fun: (ctx: Context) => void };
-type PropsMap = { args: Expression; fun: (ctx: Context) => void };
+type PropsMap = {
+  children: Expression;
+  fun: (evaluated: string, ctx: Context) => void;
+};
 type PropsLifecycle = {
-  args: Expression;
-  pre: (ctx: Context) => void;
-  post: (ctx: Context) => void;
+  children: Expression;
+  pre?: (ctx: Context) => void;
+  post?: (ctx: Context) => void;
 };
 
 export declare namespace JSX {
@@ -687,8 +684,6 @@ export declare namespace JSX {
   interface IntrinsicElements {
     omnomnom: PropsOmnomnom;
     impure: PropsImpure;
-    preprocess: PropsPreprocess;
-    postprocess: PropsPostprocess;
     map: PropsMap;
     lifecycle: PropsLifecycle;
   }
@@ -753,27 +748,21 @@ export function jsxDEV(
 
   if (macro === "omnomnom") {
     return maybeWrapWithInfo({
-      map: { exp: props.args, fun: (_: string) => "" },
+      map: { exp: props.children, fun: (_: string) => "" },
     }, info);
   } else if (macro === "impure") {
     return maybeWrapWithInfo({ impure: props.fun }, info);
-  } else if (macro === "preprocess") {
-    return maybeWrapWithInfo({
-      preprocess: { exp: props.args, fun: props.fun },
-    }, info);
-  } else if (macro === "postprocess") {
-    return maybeWrapWithInfo({
-      postprocess: { exp: props.args, fun: props.fun },
-    }, info);
   } else if (macro === "map") {
     return maybeWrapWithInfo({
-      map: { exp: props.args, fun: props.fun },
+      map: { exp: props.children, fun: props.fun },
     }, info);
   } else if (macro === "lifecycle") {
     return maybeWrapWithInfo({
       preprocess: {
-        exp: { postprocess: { exp: props.args, fun: props.post } },
-        fun: props.pre,
+        exp: {
+          postprocess: { exp: props.children, fun: props.post ?? ((_) => {}) },
+        },
+        fun: props.pre ?? ((_) => {}),
       },
     }, info);
   } else {
