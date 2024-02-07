@@ -22,7 +22,7 @@ import { assertEquals } from "https://deno.land/std@0.213.0/assert/mod.ts";
 Macromania defines a type `Expression`. You give Macromania an `Expression`, and
 it expands the expression into a string.
 */
-import { Context, Expression } from "./main.ts";
+import { Context, Expression } from "./mod.ts";
 
 /*
 The most basic expression is a string, which evaluates to itself:
@@ -101,7 +101,7 @@ To use jsx, you need to configure your typescript compiler:
         "jsxImportSource": "macromaniajsx",
     },
     "imports": {
-        "macromaniajsx/jsx-dev-runtime": "path/to/macromanias/main.ts",
+        "macromaniajsx/jsx-dev-runtime": "path/to/macromanias/mod.ts",
     }
 }
 ```
@@ -185,7 +185,7 @@ As a first demonstration, we define a simple counter macro that evaluates to an
 incrementing number each time.
 */
 
-import { createSubstate } from "./main.ts";
+import { createSubstate } from "./mod.ts";
 
 Deno.test("counter macro", () => {
   // Create a getter and a setter for some macro-specific state.
@@ -194,7 +194,7 @@ Deno.test("counter macro", () => {
     0, // the initial state
   );
 
-  function Count({}): Expression {
+  function Count(): Expression {
     return {
       // An impure expression maps a Context to an expression.
       impure: (ctx: Context) => {
@@ -480,9 +480,36 @@ Deno.test("omnomnom", () => {
 });
 
 /*
-And that really is it.
+If you want to define a macro that can operate on any number of children, then
+the typechecker start cmplaining because of the way that jsx gets compiled.
 
-To develop a complete understanding of Macromaia's workings, We recommend
+Use the `Expressions` type and the `expressions` function to work around it.
+*/
+import { Expressions, expressions } from "./mod.ts";
+
+Deno.test("many children", () => {
+  function Many({ children }: { children?: Expressions }): Expression {
+    const inner = expressions(children);
+    return `${inner.length}`;
+  }
+
+  const ctx1 = new Context();
+  const got1 = ctx1.evaluate(<Many />);
+  assertEquals(got1, "0");
+
+  const ctx2 = new Context();
+  const got2 = ctx2.evaluate(<Many>foo</Many>);
+  assertEquals(got2, "1");
+
+  const ctx3 = new Context();
+  const got3 = ctx3.evaluate(<Many>{"foo"}{"bar"}{"baz"}</Many>);
+  assertEquals(got3, "3");
+});
+
+/*
+And this really is it.
+
+To develop a complete understanding of Macromania's workings, We recommend
 reading the source code. It is pretty straightforward, well-commented, and not
 much longer than this tutorial.
 

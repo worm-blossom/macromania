@@ -3,7 +3,7 @@
   "display": "Deno",
 
   "imports": {
-    "macromaniajsx/jsx-dev-runtime": "./main.ts",
+    "macromaniajsx/jsx-dev-runtime": "./mod.ts",
   },
 
   "compilerOptions": {

@@ -646,6 +646,28 @@ function logging_level_lte(l1: LoggingLevel, l2: LoggingLevel): boolean {
   }
 }
 
+/**
+ * Utility type for macros that accept an arbitrary number of children.
+ * Use with {@linkcode expressions} to convert into an `Expression[]`.
+ */
+export type Expressions = undefined | Expression | Expression[];
+
+/**
+ * Take the output of a jsx transform and turn it into an {@linq Expression}
+ * array.
+ * @param children Some {@linkcode Expressions} to convert.
+ * @returns An array of {@linkcode Expression} containing all children.
+ */
+export function expressions(children: Expressions): Expression[] {
+  if (children === undefined) {
+    return [];
+  } else if (Array.isArray(children)) {
+    return children;
+  } else {
+    return [children];
+  }
+}
+
 /*
  * And now for jsx shenanigans!
  */
