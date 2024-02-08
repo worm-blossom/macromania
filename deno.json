@@ -11,5 +11,9 @@
     "jsxImportSource": "macromaniajsx",
     "lib": ["deno.ns", "dom"],
     "strict": true
-  }
+  },
+
+  "tasks": {
+    "test": "deno test tutorial.tsx && deno test tests.tsx",
+  },
 }

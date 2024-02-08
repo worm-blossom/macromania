@@ -12,7 +12,7 @@
 */
 
 import * as Colors from "https://deno.land/std@0.204.0/fmt/colors.ts";
-import { new_stack, Stack } from "./stack.ts";
+import { newStack, Stack } from "./stack.ts";
 
 /**
  * An expression, to be evaluated to a string.
@@ -161,7 +161,7 @@ export interface DebuggingInformation {
  * @returns The {@linkcode DebuggingInformation}, converted to a string with
  * pretty ansi escapes.
  */
-export function formatDebuggingInformation(
+export function styleDebuggingInformation(
   info: DebuggingInformation,
 ): string {
   const name = Colors.bold(Colors.italic(info.name ?? "anonymous"));
@@ -226,6 +226,13 @@ export function createSubstate<S>(
 // is not exposed, it is an implementation detail of `Context.halt()`.
 const haltEvaluation = Symbol("Halt Evaluation");
 
+// Globally track whether we are in the process of evaluating macros.
+// If so, we do not add newly created macros to the "call stack" that we
+// maintain for nicer error reporting. Hence, macros that are created
+// by other macros do not pollute debugging information; they stay
+// implementation details.
+let currentlyEvaluating = false;
+
 /**
  * The state that is threaded through an evaluation process.
  */
@@ -264,7 +271,7 @@ export class Context {
    */
   constructor(loggingLevel?: LoggingLevel, console_?: Console) {
     this.state = new Map();
-    this.stack = new_stack();
+    this.stack = newStack();
     this.haveToMakeProgress = false;
     this.round = 0;
     this.madeProgressThisRound = false;
@@ -339,7 +346,7 @@ export class Context {
         Colors.dim("[trace]"),
         ...data,
         "at",
-        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
       );
     }
   }
@@ -365,7 +372,7 @@ export class Context {
         Colors.green("[info]"),
         ...data,
         "at",
-        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
       );
     }
   }
@@ -393,7 +400,7 @@ export class Context {
         Colors.yellow("[warn]"),
         ...data,
         "at",
-        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
       );
     }
   }
@@ -420,7 +427,7 @@ export class Context {
         Colors.red("[err]"),
         ...data,
         "at",
-        formatDebuggingInformation(this.getCurrentDebuggingInformation()),
+        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
       );
     }
   }
@@ -443,19 +450,30 @@ export class Context {
 
   /**
    * Print a stacktrace, then immediately and faultily terminate evaluation.
+   *
+   * @returns A dummy Expression so you can write `return ctx.halt()` in
+   * impure or map functions. This function always throws, it never
+   * actually returns a value.
    */
-  public halt(): void {
+  public halt(): Expression {
     // Print a stacktrace of the user-facing macros that lead to the failure.
     this.console.group("");
-    let stack = this.stack;
-    while (!stack.is_empty()) {
-      this.console.log("at", formatDebuggingInformation(stack.peek()!));
-      stack = stack.pop();
-    }
+    this.printStack();
     this.console.groupEnd();
 
     // Caught in `evaluate`, never leaks.
     throw haltEvaluation;
+  }
+
+  /**
+   * Print a stacktrace to the console.
+   */
+  public printStack() {
+    let s = this.stack;
+    while (!s.isEmpty()) {
+      this.console.log("at", styleDebuggingInformation(s.peek()!));
+      s = s.pop();
+    }
   }
 
   // Attempt to evaluate a single Expression.
@@ -536,7 +554,7 @@ export class Context {
     } else if (expIsDebug(exp)) {
       this.stack = this.stack.push(exp.debug.info);
       const evaluated = this.do_evaluate(exp.debug.exp);
-      this.stack.pop();
+      this.stack = this.stack.pop();
       if (typeof evaluated === "string") {
         return evaluated;
       } else {
@@ -556,6 +574,8 @@ export class Context {
    * Evaluate an expression to a string, or return `null` in case of failure.
    */
   public evaluate(expression: Expression): string | null {
+    currentlyEvaluating = true;
+
     // We catch any thrown `halt_evaluation` values.
     try {
       // Evaluation proceeds in a loop. Try to evaluate the toplevel
@@ -571,6 +591,7 @@ export class Context {
             // Log the expressions that should have made progress but did not,
             // causing evaluation to give up.
             this.logBlockingExpressions(exp);
+            currentlyEvaluating = false;
             return null;
           } else {
             // Try to make progress a final time.
@@ -588,14 +609,17 @@ export class Context {
 
       // End of the evaluation loop. We managed to covert the initial
       // Expression into a string, so we proudly return it.
+      currentlyEvaluating = false;
       return exp;
     } catch (err) {
       // If the thrown value was `halt_evaluation`, we return `null` to cleanly
       // indicate evaluation failure. All other exceptions are indeed
       // exceptional and are simply rethrown.
       if (err === haltEvaluation) {
+        currentlyEvaluating = false;
         return null;
       } else {
+        currentlyEvaluating = false;
         throw err;
       }
     }
@@ -619,7 +643,7 @@ export class Context {
         this.doLogBlockingExpressions(inner, info);
       }
     } else if (expIsImpure(exp)) {
-      this.console.log(formatDebuggingInformation(info));
+      this.console.log(styleDebuggingInformation(info));
     } else if (expIsPreprocess(exp)) {
       this.doLogBlockingExpressions(exp.preprocess.exp, info);
     } else if (expIsPostprocess(exp)) {
@@ -741,7 +765,7 @@ function jsxSourceToDebuggingInformation(
 }
 
 // Track how many macros are currently on the js callstack.
-// This is not concerned with evaluation-time invokation of
+// This is not concerned with evaluation-time invocation of
 // functions on expressions, but with turning user input into
 // the initial expression to evaluate.
 let macroDepth = 0;
@@ -803,7 +827,7 @@ function maybeWrapWithInfo(
   // supplied by the user, but which is an implementation detail of a macro,
   // and should hence not show up in stacktraces.
   // info is `undefined` for jsx fragments, which we wish to ignore anyways.
-  if (macroDepth > 0 || !info) {
+  if (currentlyEvaluating || macroDepth > 0 || !info) {
     return exp;
   } else {
     return { debug: { exp, info } };

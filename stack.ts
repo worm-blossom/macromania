@@ -4,10 +4,10 @@ export abstract class Stack<T> {
     abstract peek(): T | undefined;
     abstract pop(): Stack<T>;
     abstract push(t: T): Stack<T>;
-    abstract is_empty(): boolean;
+    abstract isEmpty(): boolean;
 }
 
-export function new_stack<T>(): Stack<T> {
+export function newStack<T>(): Stack<T> {
     return new EmptyStack<T>();
 }
 
@@ -24,7 +24,7 @@ class EmptyStack<T> extends Stack<T> {
         return new Node(t, this);
     }
 
-    is_empty(): boolean {
+    isEmpty(): boolean {
         return true;
     }
 }
@@ -51,7 +51,7 @@ class Node<T> extends Stack<T> {
         return new Node(t, this);
     }
 
-    is_empty(): boolean {
+    isEmpty(): boolean {
         return false;
     }
 }
