@@ -31,103 +31,93 @@ export type Expression =
    * concatenating the result.
    */
   | Expression[]
-  /**
-   * An impure expression maps the evaluation {@linkcode Context} to another
-   * expression. The function can also return `null`, signalling that it
-   * cannot be evaluated just yet. In that case, it is called again in the
-   * next evaluation round.
-   */
-  | { impure: (ctx: Context) => Expression | null }
-  /**
-   * Call a function for its side-effects before attempting to evaluate a
-   * wrapped expression.
-   */
-  | {
-    preprocess: {
-      exp: Expression;
-      fun: (ctx: Context) => void;
-    };
-  }
-  /**
-   * Call a function for its side-effects after attempting to evaluate a
-   * wrapped expression.
-   */
-  | {
-    postprocess: {
-      exp: Expression;
-      fun: (ctx: Context) => void;
-    };
-  }
-  /**
-   * Evaluate an expression to a string and then map that string to an
-   * arbitrary new expression.
-   */
-  | {
-    map: {
-      exp: Expression;
-      fun: (evaluated: string, ctx: Context) => Expression;
-    };
-  }
-  /**
-   * Attach debugging information to an expression. This makes the expression
-   * appear in stack traces in case of failed evaluation.
-   */
-  | {
-    debug: {
-      exp: Expression;
-      info: DebuggingInformation;
-    };
+  | ImpureExpression
+  | PreprocessExpression
+  | PostprocessExpression
+  | MapExpression
+  | DebugExpression;
+
+/**
+ * An impure expression maps the evaluation {@linkcode Context} to another
+ * expression. The function can also return `null`, signalling that it
+ * cannot be evaluated just yet. In that case, it is called again in the
+ * next evaluation round.
+ */
+type ImpureExpression = { impure: (ctx: Context) => Expression | null };
+
+/**
+ * Call a function for its side-effects before attempting to evaluate a
+ * wrapped expression.
+ */
+type PreprocessExpression = {
+  preprocess: {
+    exp: Expression;
+    fun: (ctx: Context) => void;
   };
+};
+
+/**
+ * Call a function for its side-effects after attempting to evaluate a
+ * wrapped expression.
+ */
+type PostprocessExpression = {
+  postprocess: {
+    exp: Expression;
+    fun: (ctx: Context) => void;
+  };
+};
+
+/**
+ * Evaluate an expression to a string and then map that string to an
+ * arbitrary new expression.
+ */
+type MapExpression = {
+  map: {
+    exp: Expression;
+    fun: (evaluated: string, ctx: Context) => Expression;
+  };
+};
+
+/**
+ * Attach debugging information to an expression. This makes the expression
+ * appear in stack traces in case of failed evaluation.
+ */
+type DebugExpression = {
+  debug: {
+    exp: Expression;
+    info: DebuggingInformation;
+  };
+};
 
 function expIsImpure(
   exp: Expression,
-): exp is { impure: (ctx: Context) => Expression | null } {
+): exp is ImpureExpression {
   return (typeof exp !== "string") && !Array.isArray(exp) && ("impure" in exp);
 }
 
 function expIsPreprocess(
   exp: Expression,
-): exp is {
-  preprocess: {
-    exp: Expression;
-    fun: (ctx: Context) => void;
-  };
-} {
+): exp is PreprocessExpression {
   return (typeof exp !== "string") && !Array.isArray(exp) &&
     ("preprocess" in exp);
 }
 
 function expIsPostprocess(
   exp: Expression,
-): exp is {
-  postprocess: {
-    exp: Expression;
-    fun: (ctx: Context) => void;
-  };
-} {
+): exp is PostprocessExpression {
   return (typeof exp !== "string") && !Array.isArray(exp) &&
     ("postprocess" in exp);
 }
 
 function expIsMap(
   exp: Expression,
-): exp is {
-  map: {
-    exp: Expression;
-    fun: (evaluated: string, ctx: Context) => Expression;
-  };
-} {
+): exp is MapExpression {
   return (typeof exp !== "string") && !Array.isArray(exp) && ("map" in exp);
 }
 
 function expIsDebug(
   exp: Expression,
-): exp is {
-  debug: {
-    exp: Expression;
-    info: DebuggingInformation;
-  };
-} {
+): exp is DebugExpression {
   return (typeof exp !== "string") && !Array.isArray(exp) && ("debug" in exp);
 }
 
