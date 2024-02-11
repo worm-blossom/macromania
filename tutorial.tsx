@@ -515,15 +515,3 @@ much longer than this tutorial.
 
 Have fun building some macros!
 */
-
-/*
-Why are you still reading this?
-*/
-
-/*
-There's really nothing of interest here anymore.
-*/
-
-/*
-Told you.
-*/
