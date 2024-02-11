@@ -26,16 +26,18 @@ export type Expression =
    * Every string evaluates to itself.
    */
   | string
-  /**
-   * An array of expressions is evaluated by evaluating its subexpressions and
-   * concatenating the result.
-   */
-  | Expression[]
+  | FragmentExpression
   | ImpureExpression
   | PreprocessExpression
   | PostprocessExpression
   | MapExpression
   | DebugExpression;
+
+/**
+ * A fragment consists of an array of expressions. They are evaulated in
+ * sequence and the results are concatenated.
+ */
+type FragmentExpression = { fragment: Expression[] };
 
 /**
  * An impure expression maps the evaluation {@linkcode Context} to another
@@ -89,36 +91,40 @@ type DebugExpression = {
   };
 };
 
+function expIsFragment(
+  exp: Expression,
+): exp is FragmentExpression {
+  return (typeof exp !== "string") && ("fragment" in exp);
+}
+
 function expIsImpure(
   exp: Expression,
 ): exp is ImpureExpression {
-  return (typeof exp !== "string") && !Array.isArray(exp) && ("impure" in exp);
+  return (typeof exp !== "string") && ("impure" in exp);
 }
 
 function expIsPreprocess(
   exp: Expression,
 ): exp is PreprocessExpression {
-  return (typeof exp !== "string") && !Array.isArray(exp) &&
-    ("preprocess" in exp);
+  return (typeof exp !== "string") && ("preprocess" in exp);
 }
 
 function expIsPostprocess(
   exp: Expression,
 ): exp is PostprocessExpression {
-  return (typeof exp !== "string") && !Array.isArray(exp) &&
-    ("postprocess" in exp);
+  return (typeof exp !== "string") && ("postprocess" in exp);
 }
 
 function expIsMap(
   exp: Expression,
 ): exp is MapExpression {
-  return (typeof exp !== "string") && !Array.isArray(exp) && ("map" in exp);
+  return (typeof exp !== "string") && ("map" in exp);
 }
 
 function expIsDebug(
   exp: Expression,
 ): exp is DebugExpression {
-  return (typeof exp !== "string") && !Array.isArray(exp) && ("debug" in exp);
+  return (typeof exp !== "string") && ("debug" in exp);
 }
 
 /**
@@ -130,14 +136,14 @@ function canBeEvaluatedOneStep(x: any): boolean {
   if (typeof x === "string") {
     // We have a string
     return true;
-  } else if (Array.isArray(x)) {
-    // We have an array. Its contents might be invalid, but they will be
-    // checked themselves later.
-    return true;
-  } else if (typeof x === "object" && x !== null) {
-    // We have an actual javascript object. Nnow we can safely check for
+  } else if (typeof x === "object" && x !== null && !Array.isArray(x)) {
+    // We have an actual javascript object. Now we can safely check for
     // properties.
-    if (Object.hasOwn(x, "impure")) {
+    if (Object.hasOwn(x, "fragment")) {
+      // We might have a fragment expression.
+      // Check if the inner value is an array.
+      return Array.isArray(x.fragment);
+    } else if (Object.hasOwn(x, "impure")) {
       // We might have an impure expression.
       // Check if the inner value is a function.
       return typeof x.impure === "function";
@@ -544,13 +550,13 @@ export class Context {
 
     if (typeof exp === "string") {
       return exp;
-    } else if (Array.isArray(exp)) {
+    } else if (expIsFragment(exp)) {
       // Evaluate arrays by successively evaluating their items. Join together
       // adjacent strings to prevent unncecessarily iterating over them separately
       // in future evaluation rounds.
-      const evaluated: Expression = [];
+      const evaluated: Expression[] = [];
       let previous_evaluated_to_string = false;
-      for (const inner of exp) {
+      for (const inner of exp.fragment) {
         const inner_evaluated = this.do_evaluate(inner);
 
         if (typeof inner_evaluated === "string") {
@@ -575,7 +581,7 @@ export class Context {
       } else if (evaluated.length === 1) {
         return evaluated[0];
       } else {
-        return evaluated;
+        return { fragment: evaluated };
       }
     } else if (expIsImpure(exp)) {
       const unthunk = exp.impure(this);
@@ -782,15 +788,41 @@ export function expressions(children: Expressions): Expression[] {
 // Intrinsic elements are those with a lowercase name, in React
 // those would be html elements.
 type MacromaniaIntrinsic =
+  | "fragment"
   | "omnomnom"
   | "impure"
   | "map"
   | "lifecycle";
 
 type PropsOmnomnom = { children: Expression };
-type PropsImpure = { fun: (ctx: Context) => Expression | null };
+type PropsFragment = {
+  /**
+   * The expressions to form the contents of the created
+   * {@linkcode FragmentExpression}.
+   */
+  exps: Expression[];
+};
+type PropsImpure = {
+  /**
+   * Produce an {@linkcode Expression} from a {@linkcode Context}, or signal
+   * that this is currently impossible by returning `null`, causing this
+   * expression to be scheduled for a later evaluation attempt.
+   * @param ctx - The {@linkcode Context} to counsel for expression generation.
+   * @returns `null` to reschedule evaluating this, or an
+   * {@linkcode Expression} to evaluate next.
+   */
+  fun: (ctx: Context) => Expression | null;
+};
 type PropsMap = {
   children: Expression;
+  /**
+   * Receive the evaluated children of the `map` intrinsic and map them (and
+   * the current {@linkcode Context}) to a new {@linkcode Expression} to
+   * continue evaluation with.
+   * @param evaluated - The fully evaluated children of the `map` intrinsic.
+   * @param ctx - The {@linkcode Context} to counsel for expression generation.
+   * @returns An {@linkcode Expression} to evaluate next.
+   */
   fun: (evaluated: string, ctx: Context) => void;
 };
 type PropsLifecycle = {
@@ -811,9 +843,29 @@ export declare namespace JSX {
   // https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
   // https://www.typescriptlang.org/docs/handbook/jsx.html#attribute-type-checking
   interface IntrinsicElements {
+    /**
+     * Evaluate the child expressions for their side-efects.
+     * Evaluates to the empty string.
+     */
     omnomnom: PropsOmnomnom;
+    /**
+     * Evaluate an array of expressions and concatenate the results.
+     */
+    fragment: PropsFragment;
+    /**
+     * Create an {@linkcode Expression} dependent on the current
+     * {@linkcode Context}, and evaluate it.
+     */
     impure: PropsImpure;
+    /**
+     * Evaluate some children and then create a new {@linkcode Expression} from
+     * the resulting string and the current {@linkcode Context}.
+     */
     map: PropsMap;
+    /**
+     * Run some stateful functions before and after evaluating the child
+     * expressions.
+     */
     lifecycle: PropsLifecycle;
   }
 
@@ -879,6 +931,8 @@ export function jsxDEV(
     return maybeWrapWithInfo({
       map: { exp: props.children, fun: (_: string) => "" },
     }, info);
+  } else if (macro === "fragment") {
+    return maybeWrapWithInfo({ fragment: props.exps }, info);
   } else if (macro === "impure") {
     return maybeWrapWithInfo({ impure: props.fun }, info);
   } else if (macro === "map") {
@@ -920,5 +974,5 @@ function maybeWrapWithInfo(
 export function Fragment(
   { children }: { children: Expression[] },
 ): Expression {
-  return children;
+  return { fragment: children };
 }

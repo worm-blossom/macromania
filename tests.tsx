@@ -2,11 +2,16 @@
 Some additional tests that did not make sense in the tutorial.
 */
 
-import { assertEquals } from "https://deno.land/std@0.213.0/assert/mod.ts";
+import {
+  assertEquals,
+  fail,
+} from "https://deno.land/std@0.213.0/assert/mod.ts";
 import {
   Context,
   DebuggingInformation,
   Expression,
+  Expressions,
+  expressions,
   styleDebuggingInformation,
 } from "./mod.ts";
 import { newStack, Stack } from "./stack.ts";
@@ -164,8 +169,8 @@ Deno.test("stack 3", () => {
 });
 
 Deno.test("stack 4", () => {
-  function A({ children }: { children: Expression }): Expression {
-    return children;
+  function A({ children }: { children: Expressions }): Expression {
+    return <fragment exps={expressions(children)} />;
   }
 
   function B({ children }: { children: Expression }): Expression {
@@ -359,14 +364,11 @@ Deno.test("stack 8", () => {
 });
 
 Deno.test("stack 9", () => {
-  function A({ children }: { children: Expression }): Expression {
+  function A({ children }: { children: Expressions }): Expression {
     return (
       <map
         fun={(evaled, ctx) => {
-          //
-          ctx.warn(children);
-          // ctx.printStack();
-          return children;
+          return <fragment exps={expressions(children)} />;
         }}
       >
         42

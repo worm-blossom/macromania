@@ -37,18 +37,15 @@ Deno.test("string expression", () => {
 This snippet has demonstrated the fundamental working of Macromania. You create
 a new `Context`, pass an `Expression` (in this case, a string) to its
 `evaluate` function, and get the expanded expression back.
-
-That's it, that's basically all there is to know. All that remains is learning
-about the different kinds of expressions there are.
 */
 
 /*
-An array of expression is itself an expression, evaluated by evaluating its
-components and concatenating the results:
+To evaluate a sequence of expressions and concatenate the results, use a
+`FragmentExpression`:
 */
-Deno.test("array expression", () => {
+Deno.test("fragment expression", () => {
   const ctx = new Context();
-  const got = ctx.evaluate(["Hello,", " world", "!"]);
+  const got = ctx.evaluate({fragment: ["Hello,", " world", "!"]});
   assertEquals(got, "Hello, world!");
 });
 
@@ -58,17 +55,14 @@ are _macros_. A macro is a function that returns an expression.
 */
 Deno.test("simple macro", () => {
   function Em({ children }: { children: Expression }): Expression {
-    return ["<em>", children, "</em>"];
+    return {fragment: ["*", children, "*"]};
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate([
-    Em({ children: "Hello" }),
-    ", ",
-    Em({ children: "world" }),
-    "!",
-  ]);
-  assertEquals(got, "<em>Hello</em>, <em>world</em>!");
+  const got = ctx.evaluate(
+    Em({ children: "Hello, world!" }),
+  );
+  assertEquals(got, "*Hello, world!*");
 });
 
 ///////////////
@@ -77,18 +71,17 @@ Deno.test("simple macro", () => {
 
 /*
 There is a good reason for the rather unconventional argument type of the
-preceding `Em` macro:
-we can use [jsx](https://react.dev/learn/writing-markup-with-jsx) to
-invoke it:
+preceding `Em` macro: We can use
+[jsx](https://react.dev/learn/writing-markup-with-jsx) in macromania.
 */
 Deno.test("simple macro jsx", () => {
   function Em({ children }: { children: Expression }): Expression {
-    return ["<em>", children, "</em>"];
+    return <>*{children}*</>; // A jsx fragment compiles into a FragmentExpression
   }
 
   const ctx = new Context();
   const got = ctx.evaluate(<Em>Hello</Em>);
-  assertEquals(got, "<em>Hello</em>");
+  assertEquals(got, "*Hello*");
 });
 
 /*
@@ -120,14 +113,13 @@ Deno.test("jsx two children", () => {
   function Greet(
     { children }: { children: [Expression, Expression] },
   ): Expression {
-    return [children[0], ", ", children[1], "!"];
+    return <>{children[0]}, {children[1]}!</>;
   }
 
   const ctx = new Context();
   const got = ctx.evaluate(
-    // We use a jsx fragment to divide text into two separate expressions here.
     <Greet>
-      Hello<>World</>
+      {"Hello"}{"World"}
     </Greet>,
   );
   assertEquals(got, "Hello, World!");
@@ -163,7 +155,7 @@ Deno.test("jsx props", () => {
   function Exclaim(
     { repetitions, children }: { repetitions: number; children: Expression },
   ): Expression {
-    return [children, "!".repeat(repetitions)];
+    return <>{children}{"!".repeat(repetitions)}</>;
   }
 
   const ctx = new Context();
@@ -419,8 +411,8 @@ Deno.test("nested markdown sections", () => {
     <Section title="My Text">
       <>
         Bla bla bla{"\n"}
-        <Section title="Subsection 1">Hi!{"\n"}</Section>
-        <Section title="Subsection 2">Bye!{"\n"}</Section>
+        <Section title="Subsection 1">{"Hi!\n"}</Section>
+        <Section title="Subsection 2">{"Bye!\n"}</Section>
       </>
     </Section>,
   );
@@ -480,8 +472,20 @@ Deno.test("omnomnom", () => {
 });
 
 /*
+The `fragment` intrinsic can be used to convert an array of Expressions into
+a FragmentExpression:
+*/
+Deno.test("fragment intrinsic", () => {
+  const ctx = new Context();
+  const got = ctx.evaluate(
+    <fragment exps={["a", "b", "c"]} />,
+  );
+  assertEquals(got, "abc");
+});
+
+/*
 If you want to define a macro that can operate on any number of children, then
-the typechecker start cmplaining because of the way that jsx gets compiled.
+the typechecker start complaining because of the way that jsx gets compiled.
 
 Use the `Expressions` type and the `expressions` function to work around it.
 */
