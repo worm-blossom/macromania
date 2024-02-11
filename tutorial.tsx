@@ -45,7 +45,7 @@ To evaluate a sequence of expressions and concatenate the results, use a
 */
 Deno.test("fragment expression", () => {
   const ctx = new Context();
-  const got = ctx.evaluate({fragment: ["Hello,", " world", "!"]});
+  const got = ctx.evaluate({ fragment: ["Hello,", " world", "!"] });
   assertEquals(got, "Hello, world!");
 });
 
@@ -55,7 +55,7 @@ are _macros_. A macro is a function that returns an expression.
 */
 Deno.test("simple macro", () => {
   function Em({ children }: { children: Expression }): Expression {
-    return {fragment: ["*", children, "*"]};
+    return { fragment: ["*", children, "*"] };
   }
 
   const ctx = new Context();
@@ -119,7 +119,8 @@ Deno.test("jsx two children", () => {
   const ctx = new Context();
   const got = ctx.evaluate(
     <Greet>
-      {"Hello"}{"World"}
+      {"Hello"}
+      {"World"}
     </Greet>,
   );
   assertEquals(got, "Hello, World!");
@@ -182,7 +183,6 @@ import { createSubstate } from "./mod.ts";
 Deno.test("counter macro", () => {
   // Create a getter and a setter for some macro-specific state.
   const [getCount, setCount] = createSubstate<number /* type of the state*/>(
-    "Counter", // an arbitrary name for debugging purposes
     0, // the initial state
   );
 
@@ -225,7 +225,6 @@ Deno.test("defs and refs", () => {
   // Create a getter and a setter for our state: a mapping from short ids to
   // links.
   const [getDefs, _setDefs] = createSubstate<Map<string, string>>(
-    "Definitions", // an arbitrary name for debugging purposes
     new Map(), // the initial state
   );
 
@@ -375,10 +374,7 @@ automatically uses the correkt markup for headings.
 */
 // Create a getter and a setter for section depth.
 Deno.test("nested markdown sections", () => {
-  const [getDepth, setDepth] = createSubstate<number>(
-    "Section Depth",
-    0,
-  );
+  const [getDepth, setDepth] = createSubstate<number>(0);
 
   // Render the markup for a heading.
   function AutoHeading(
@@ -520,310 +516,13 @@ much longer than this tutorial.
 Have fun building some macros!
 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
 Why are you still reading this?
 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
 There's really nothing of interest here anymore.
 */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
 Told you.

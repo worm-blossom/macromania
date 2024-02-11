@@ -265,10 +265,9 @@ export type State = Map<symbol, any>;
  * @returns A getter and a setter for the substate.
  */
 export function createSubstate<S>(
-  name: string,
   initial: S,
 ): [(ctx: Context) => S, (ctx: Context, newState: S) => void] {
-  const key = Symbol(name);
+  const key = Symbol();
 
   const get = (ctx: Context) => {
     const got = ctx.getState().get(key);
@@ -396,7 +395,7 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public trace(...data: any[]): void {
-    if (logging_level_lte(this.loggingLevel, "trace")) {
+    if (loggingLevelLte(this.loggingLevel, "trace")) {
       this.console.trace(Colors.dim("[trace]"), ...data);
     }
   }
@@ -406,8 +405,8 @@ export class Context {
    * {@linkcode DebuggingInformation}.
    */
   // deno-lint-ignore no-explicit-any
-  public trace_at(...data: any[]): void {
-    if (logging_level_lte(this.loggingLevel, "trace")) {
+  public traceAt(...data: any[]): void {
+    if (loggingLevelLte(this.loggingLevel, "trace")) {
       this.console.trace(
         Colors.dim("[trace]"),
         ...data,
@@ -422,7 +421,7 @@ export class Context {
    */
   // deno-lint-ignore no-explicit-any
   public info(...data: any[]): void {
-    if (logging_level_lte(this.loggingLevel, "info")) {
+    if (loggingLevelLte(this.loggingLevel, "info")) {
       this.console.info(Colors.blue("[info]"), ...data);
     }
   }
@@ -432,8 +431,8 @@ export class Context {
    * {@linkcode DebuggingInformation}.
    */
   // deno-lint-ignore no-explicit-any
-  public info_at(...data: any[]): void {
-    if (logging_level_lte(this.loggingLevel, "info")) {
+  public infoAt(...data: any[]): void {
+    if (loggingLevelLte(this.loggingLevel, "info")) {
       this.console.info(
         Colors.green("[info]"),
         ...data,
@@ -449,7 +448,7 @@ export class Context {
   // deno-lint-ignore no-explicit-any
   public warn(...data: any[]): void {
     this.warnOrWorse = true;
-    if (logging_level_lte(this.loggingLevel, "warn")) {
+    if (loggingLevelLte(this.loggingLevel, "warn")) {
       this.console.warn(Colors.yellow("[warn]"), ...data);
     }
   }
@@ -459,9 +458,9 @@ export class Context {
    * {@linkcode DebuggingInformation}.
    */
   // deno-lint-ignore no-explicit-any
-  public warn_at(...data: any[]): void {
+  public warnAt(...data: any[]): void {
     this.warnOrWorse = true;
-    if (logging_level_lte(this.loggingLevel, "warn")) {
+    if (loggingLevelLte(this.loggingLevel, "warn")) {
       this.console.warn(
         Colors.yellow("[warn]"),
         ...data,
@@ -477,7 +476,7 @@ export class Context {
   // deno-lint-ignore no-explicit-any
   public error(...data: any[]): void {
     this.warnOrWorse = true;
-    if (logging_level_lte(this.loggingLevel, "error")) {
+    if (loggingLevelLte(this.loggingLevel, "error")) {
       this.console.error(Colors.red("[err]"), ...data);
     }
   }
@@ -486,9 +485,9 @@ export class Context {
    * Log an error, annotated with the current {@linkcode DebuggingInformation}.
    */
   // deno-lint-ignore no-explicit-any
-  public error_at(...data: any[]): void {
+  public errorAt(...data: any[]): void {
     this.warnOrWorse = true;
-    if (logging_level_lte(this.loggingLevel, "error")) {
+    if (loggingLevelLte(this.loggingLevel, "error")) {
       this.console.warn(
         Colors.red("[err]"),
         ...data,
@@ -543,7 +542,7 @@ export class Context {
   }
 
   // Attempt to evaluate a single Expression.
-  private do_evaluate(exp: Expression): Expression {
+  private doEvaluate(exp: Expression): Expression {
     if (!canBeEvaluatedOneStep(exp)) {
       this.printNonExp(exp);
     }
@@ -555,22 +554,23 @@ export class Context {
       // adjacent strings to prevent unncecessarily iterating over them separately
       // in future evaluation rounds.
       const evaluated: Expression[] = [];
-      let previous_evaluated_to_string = false;
+      let previousEvaluatedToString = false;
       for (const inner of exp.fragment) {
-        const inner_evaluated = this.do_evaluate(inner);
+        const innerEvaluated = this.doEvaluate(inner);
 
-        if (typeof inner_evaluated === "string") {
-          if (previous_evaluated_to_string) {
+        if (typeof innerEvaluated === "string") {
+          if (previousEvaluatedToString) {
             evaluated[evaluated.length - 1] =
               (<string> evaluated[evaluated.length - 1]).concat(
-                inner_evaluated,
+                innerEvaluated,
               );
           } else {
-            previous_evaluated_to_string = true;
-            evaluated.push(inner_evaluated);
+            previousEvaluatedToString = true;
+            evaluated.push(innerEvaluated);
           }
         } else {
-          evaluated.push(inner_evaluated);
+          evaluated.push(innerEvaluated);
+          previousEvaluatedToString = false;
         }
       }
 
@@ -589,12 +589,12 @@ export class Context {
         return exp; // Try again next evaluation round.
       } else {
         this.madeProgressThisRound = true;
-        return this.do_evaluate(unthunk);
+        return this.doEvaluate(unthunk);
       }
     } else if (expIsPreprocess(exp)) {
       exp.preprocess.fun(this);
 
-      const evaluated = this.do_evaluate(exp.preprocess.exp);
+      const evaluated = this.doEvaluate(exp.preprocess.exp);
       if (typeof evaluated === "string") {
         return evaluated;
       } else {
@@ -602,7 +602,7 @@ export class Context {
         return exp;
       }
     } else if (expIsPostprocess(exp)) {
-      const evaluated = this.do_evaluate(exp.postprocess.exp);
+      const evaluated = this.doEvaluate(exp.postprocess.exp);
       exp.postprocess.fun(this);
 
       if (typeof evaluated === "string") {
@@ -612,18 +612,18 @@ export class Context {
         return exp;
       }
     } else if (expIsMap(exp)) {
-      const evaluated = this.do_evaluate(exp.map.exp);
+      const evaluated = this.doEvaluate(exp.map.exp);
 
       if (typeof evaluated === "string") {
         const mapped = exp.map.fun(evaluated, this);
-        return this.do_evaluate(mapped);
+        return this.doEvaluate(mapped);
       } else {
         exp.map.exp = evaluated;
         return exp;
       }
     } else if (expIsDebug(exp)) {
       this.stack = this.stack.push(exp.debug.info);
-      const evaluated = this.do_evaluate(exp.debug.exp);
+      const evaluated = this.doEvaluate(exp.debug.exp);
       this.stack = this.stack.pop();
       if (typeof evaluated === "string") {
         return evaluated;
@@ -642,7 +642,7 @@ export class Context {
   public evaluate(expression: Expression): string | null {
     currentlyEvaluating = true;
 
-    // We catch any thrown `halt_evaluation` values.
+    // We catch any thrown `haltEvaluation` values.
     try {
       // Evaluation proceeds in a loop. Try to evaluate the toplevel
       // expression. If it was completely turned into a string, return that
@@ -650,7 +650,7 @@ export class Context {
       // evaluating it again.
       let exp = expression;
       while (typeof exp != "string") {
-        exp = this.do_evaluate(exp);
+        exp = this.doEvaluate(exp);
 
         if (!this.madeProgressThisRound) {
           if (this.haveToMakeProgress) {
@@ -666,7 +666,7 @@ export class Context {
         }
 
         // The evaluation round has completed, increase the round counter and
-        // reset the `made_progress_this_round` flag.
+        // reset the `madeProgressThisRound` flag.
         this.round += 1;
         this.madeProgressThisRound = false;
 
@@ -678,7 +678,7 @@ export class Context {
       currentlyEvaluating = false;
       return exp;
     } catch (err) {
-      // If the thrown value was `halt_evaluation`, we return `null` to cleanly
+      // If the thrown value was `haltEvaluation`, we return `null` to cleanly
       // indicate evaluation failure. All other exceptions are indeed
       // exceptional and are simply rethrown.
       if (err === haltEvaluation) {
@@ -747,7 +747,7 @@ export class Context {
 
 export type LoggingLevel = "trace" | "info" | "warn" | "error";
 
-function logging_level_lte(l1: LoggingLevel, l2: LoggingLevel): boolean {
+function loggingLevelLte(l1: LoggingLevel, l2: LoggingLevel): boolean {
   if (l1 === "trace") {
     return true;
   } else if (l1 === "info" && l2 != "trace") {
@@ -794,7 +794,8 @@ type MacromaniaIntrinsic =
   | "map"
   | "lifecycle";
 
-type PropsOmnomnom = { children: Expression };
+type PropsOmnomnom = { children: Expressions };
+
 type PropsFragment = {
   /**
    * The expressions to form the contents of the created
@@ -802,6 +803,7 @@ type PropsFragment = {
    */
   exps: Expression[];
 };
+
 type PropsImpure = {
   /**
    * Produce an {@linkcode Expression} from a {@linkcode Context}, or signal
@@ -813,8 +815,9 @@ type PropsImpure = {
    */
   fun: (ctx: Context) => Expression | null;
 };
+
 type PropsMap = {
-  children: Expression;
+  children: Expressions;
   /**
    * Receive the evaluated children of the `map` intrinsic and map them (and
    * the current {@linkcode Context}) to a new {@linkcode Expression} to
@@ -825,8 +828,9 @@ type PropsMap = {
    */
   fun: (evaluated: string, ctx: Context) => void;
 };
+
 type PropsLifecycle = {
-  children: Expression;
+  children: Expressions;
   pre?: (ctx: Context) => void;
   post?: (ctx: Context) => void;
 };
@@ -915,7 +919,7 @@ export function jsxDEV(
   // deno-lint-ignore no-explicit-any
   props: any,
   _key: undefined,
-  _is_static_children: boolean,
+  _isStaticChildren: boolean,
   source: JsxSource | undefined,
   // deno-lint-ignore no-explicit-any
   _self: any,
@@ -937,13 +941,16 @@ export function jsxDEV(
     return maybeWrapWithInfo({ impure: props.fun }, info);
   } else if (macro === "map") {
     return maybeWrapWithInfo({
-      map: { exp: props.children, fun: props.fun },
+      map: { exp: { fragment: expressions(props.children) }, fun: props.fun },
     }, info);
   } else if (macro === "lifecycle") {
     return maybeWrapWithInfo({
       preprocess: {
         exp: {
-          postprocess: { exp: props.children, fun: props.post ?? ((_) => {}) },
+          postprocess: {
+            exp: { fragment: expressions(props.children) },
+            fun: props.post ?? ((_) => {}),
+          },
         },
         fun: props.pre ?? ((_) => {}),
       },
