@@ -122,6 +122,76 @@ function expIsDebug(
 }
 
 /**
+ * Return whether the given javascript value can be passed to `doEvaluate`
+ * without crashing in the outermost case distinction.
+ */
+// deno-lint-ignore no-explicit-any
+function canBeEvaluatedOneStep(x: any): boolean {
+  if (typeof x === "string") {
+    // We have a string
+    return true;
+  } else if (Array.isArray(x)) {
+    // We have an array. Its contents might be invalid, but they will be
+    // checked themselves later.
+    return true;
+  } else if (typeof x === "object" && x !== null) {
+    // We have an actual javascript object. Nnow we can safely check for
+    // properties.
+    if (Object.hasOwn(x, "impure")) {
+      // We might have an impure expression.
+      // Check if the inner value is a function.
+      return typeof x.impure === "function";
+    } else if (Object.hasOwn(x, "preprocess")) {
+      // We might have a preprocess expression.
+      const inner = x.preprocess;
+      if (typeof inner !== "object") {
+        return false;
+      } else {
+        // Check if it has a `fun` function and an `exp` property.
+        return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
+          Object.hasOwn(inner, "exp");
+      }
+    } else if (Object.hasOwn(x, "postprocess")) {
+      // We might have a postprocess expression.
+      const inner = x.postprocess;
+      if (typeof inner !== "object") {
+        return false;
+      } else {
+        // Check if it has a `fun` function and an `exp` property.
+        return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
+          Object.hasOwn(inner, "exp");
+      }
+    } else if (Object.hasOwn(x, "map")) {
+      // We might have a map expression.
+      const inner = x.map;
+      if (typeof inner !== "object") {
+        return false;
+      } else {
+        // Check if it has a `fun` function and an `exp` property.
+        return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
+          Object.hasOwn(inner, "exp");
+      }
+    } else if (Object.hasOwn(x, "debug")) {
+      // We might have a debug expression.
+      const inner = x.debug;
+      if (typeof inner !== "object") {
+        return false;
+      } else {
+        // Check if it has an `info` object and an `exp` property.
+        return Object.hasOwn(inner, "info") && typeof inner.info === "object" &&
+          Object.hasOwn(inner, "exp");
+      }
+    } else {
+      // We have an object but no expression kind matches.
+      return false;
+    }
+  } else {
+    // We have neither a string nor an array nor an object.
+    return false;
+  }
+}
+
+/**
  * Debugging information that can be attached to {@linkcode Expression}s via
  * {@linkcode StacktracingExpression}s.
  */
@@ -468,6 +538,10 @@ export class Context {
 
   // Attempt to evaluate a single Expression.
   private do_evaluate(exp: Expression): Expression {
+    if (!canBeEvaluatedOneStep(exp)) {
+      this.printNonExp(exp);
+    }
+
     if (typeof exp === "string") {
       return exp;
     } else if (Array.isArray(exp)) {
@@ -552,11 +626,7 @@ export class Context {
         return exp;
       }
     } else {
-      // If typescript had a stricter type system, this case would be unreachable.
-      throw new Error(`Tried to evaluate a value that is not an Expression.
-  Someone somewhere did type-system shenanigans that went wrong.
-
-  ${exp}`);
+      return this.printNonExp(exp);
     }
   }
 
@@ -613,6 +683,29 @@ export class Context {
         throw err;
       }
     }
+  }
+
+  // Terminate execution and give a helpful error message.
+  // deno-lint-ignore no-explicit-any
+  private printNonExp(x: any): Expression {
+    this.error(
+      `Tried to evaluate a javascript value that was no macromania expression.`,
+    );
+    this.error(
+      `Did you put {someJavascript} into a jsx element that evaluated to a non-expression?`,
+    );
+    this.error(
+      `Evaluation cannor recover, but here are the value, its json representation, and a macro stacktrace for you to find abd fix the mistake.`,
+    );
+    this.error();
+    this.error(`The offending value, as passed to console.log():`);
+    this.error(x);
+    this.error();
+    this.error(`The offending value, as passed to JSON.stringify():`);
+    this.error(JSON.stringify(x));
+    this.error();
+    this.error(`The stack of macro invocations leading to this predicament:`);
+    return this.halt();
   }
 
   private logBlockingExpressions(exp: Expression) {

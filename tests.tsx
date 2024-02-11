@@ -363,7 +363,8 @@ Deno.test("stack 9", () => {
     return (
       <map
         fun={(evaled, ctx) => {
-          // ctx.warn(children);
+          //
+          ctx.warn(children);
           // ctx.printStack();
           return children;
         }}
@@ -384,6 +385,7 @@ Deno.test("stack 9", () => {
     );
   }
 
+  // deno-lint-ignore ban-types
   function D(props: {}): Expression {
     return "ddd";
   }
