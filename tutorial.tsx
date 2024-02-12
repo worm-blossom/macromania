@@ -245,7 +245,7 @@ Deno.test("defs and refs", () => {
       if (link) {
         return `<a href="${link}">${name}</a>`;
       } else {
-        ctx.error(`Undefined name ${name}.`);
+        ctx.log(`Undefined name ${name}.`);
         ctx.halt();
         return "";
       }
@@ -266,8 +266,8 @@ Deno.test("defs and refs", () => {
   );
 
   /*
-  This example also demonstrates two methods of `Context`: `error` prints an error
-  message, and `halt` aborts macro expansion.
+  This example also demonstrates two methods of `Context`: `log` prints output
+  to a console, and `halt` aborts macro expansion.
 
   These macros require definitions to occur before references, otherwise
   evaluation fails:
@@ -280,7 +280,6 @@ Deno.test("defs and refs", () => {
     </>,
   );
   assertEquals(got2, null);
-  assertEquals(ctx2.didWarnOrWorse(), true);
 
   /*
   We can fix this by returning `null` from the impure function in the Ref macro
@@ -341,7 +340,7 @@ Deno.test("defs and refs", () => {
         return `<a href="${link}">${name}</a>`;
       } else {
         if (ctx.mustMakeProgress()) {
-          ctx.warn("Unknown name: ", name);
+          ctx.log("Unknown name: ", name);
           return "[unknown name]";
         } else {
           return null;

@@ -13,6 +13,7 @@
 
 import * as Colors from "https://deno.land/std@0.204.0/fmt/colors.ts";
 import { newStack, Stack } from "./stack.ts";
+import { renderMessagePrefix } from "../macromania-logger/deps.ts";
 
 /**
  * An expression, to be evaluated to a string.
@@ -299,6 +300,14 @@ const haltEvaluation = Symbol("Halt Evaluation");
 let currentlyEvaluating = false;
 
 /**
+ * The (deliberately simple) interface we require for the logging backend.
+ */
+export interface LoggingTarget {
+  // deno-lint-ignore no-explicit-any
+  log: (...data: any[]) => void;
+}
+
+/**
  * The state that is threaded through an evaluation process.
  */
 export class Context {
@@ -315,35 +324,22 @@ export class Context {
   // evaluation round, we track whether at least one impure expression returned
   // non-null in the current round.
   private madeProgressThisRound: boolean;
-  // Track whether at least one warning or error was logged.
-  private warnOrWorse;
-  // Only log messages of at least this severity.
-  private loggingLevel: LoggingLevel;
   // The Context provides several methods for logging. This field provides the
   // backend for the logging methods.
-  private console: Console;
+  private loggingBackend: LoggingTarget;
 
   /**
-   * Create a new `Context`, logging to the given `Console`.
-   * @param loggingLevel The minimum severity of log methods to actually log.
-   * Defaults to `"warn"`.
-   * @param console_ The `Console` to use for the logging methods on `Context`.
-   * Defaults to the global console.
+   * Create a new `Context`, logging to the given `LoggingTarget`.
+   * @param loggingBackend The {@linkcode LoggingTarget} to use. Defaults to the global console.
    */
-  /**
-   * @param loggingLevel
-   * @param console_
-   */
-  constructor(loggingLevel?: LoggingLevel, console_?: Console) {
+  constructor(loggingBackend?: LoggingTarget) {
     this.state = new Map();
     this.stack = newStack();
     this.haveToMakeProgress = false;
     this.round = 0;
     this.madeProgressThisRound = false;
-    this.warnOrWorse = false;
-
-    this.loggingLevel = loggingLevel ?? "warn";
-    this.console = console_ ? console_ : console /*the global typescript one*/;
+    this.loggingBackend = loggingBackend ??
+      console /*the global typescript one*/;
   }
 
   /**
@@ -391,118 +387,11 @@ export class Context {
   }
 
   /**
-   * Log trace-level output.
+   * Log a message.
    */
   // deno-lint-ignore no-explicit-any
-  public trace(...data: any[]): void {
-    if (loggingLevelLte(this.loggingLevel, "trace")) {
-      this.console.trace(Colors.dim("[trace]"), ...data);
-    }
-  }
-
-  /**
-   * Log trace-level output, annotated with the current
-   * {@linkcode DebuggingInformation}.
-   */
-  // deno-lint-ignore no-explicit-any
-  public traceAt(...data: any[]): void {
-    if (loggingLevelLte(this.loggingLevel, "trace")) {
-      this.console.trace(
-        Colors.dim("[trace]"),
-        ...data,
-        "at",
-        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
-      );
-    }
-  }
-
-  /**
-   * Log informational output.
-   */
-  // deno-lint-ignore no-explicit-any
-  public info(...data: any[]): void {
-    if (loggingLevelLte(this.loggingLevel, "info")) {
-      this.console.info(Colors.blue("[info]"), ...data);
-    }
-  }
-
-  /**
-   * Log informational output, annotated with the current
-   * {@linkcode DebuggingInformation}.
-   */
-  // deno-lint-ignore no-explicit-any
-  public infoAt(...data: any[]): void {
-    if (loggingLevelLte(this.loggingLevel, "info")) {
-      this.console.info(
-        Colors.green("[info]"),
-        ...data,
-        "at",
-        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
-      );
-    }
-  }
-
-  /**
-   * Log a warning.
-   */
-  // deno-lint-ignore no-explicit-any
-  public warn(...data: any[]): void {
-    this.warnOrWorse = true;
-    if (loggingLevelLte(this.loggingLevel, "warn")) {
-      this.console.warn(Colors.yellow("[warn]"), ...data);
-    }
-  }
-
-  /**
-   * Log a warning, annotated with the current
-   * {@linkcode DebuggingInformation}.
-   */
-  // deno-lint-ignore no-explicit-any
-  public warnAt(...data: any[]): void {
-    this.warnOrWorse = true;
-    if (loggingLevelLte(this.loggingLevel, "warn")) {
-      this.console.warn(
-        Colors.yellow("[warn]"),
-        ...data,
-        "at",
-        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
-      );
-    }
-  }
-
-  /**
-   * Log an error.
-   */
-  // deno-lint-ignore no-explicit-any
-  public error(...data: any[]): void {
-    this.warnOrWorse = true;
-    if (loggingLevelLte(this.loggingLevel, "error")) {
-      this.console.error(Colors.red("[err]"), ...data);
-    }
-  }
-
-  /**
-   * Log an error, annotated with the current {@linkcode DebuggingInformation}.
-   */
-  // deno-lint-ignore no-explicit-any
-  public errorAt(...data: any[]): void {
-    this.warnOrWorse = true;
-    if (loggingLevelLte(this.loggingLevel, "error")) {
-      this.console.warn(
-        Colors.red("[err]"),
-        ...data,
-        "at",
-        styleDebuggingInformation(this.getCurrentDebuggingInformation()),
-      );
-    }
-  }
-
-  /**
-   * Return whether at least one warning or error logging method was called,
-   * regardless of the logging level.
-   */
-  public didWarnOrWorse() {
-    return this.warnOrWorse;
+  public log(...data: any[]): void {
+    this.loggingBackend.log(...data);
   }
 
   /**
@@ -522,9 +411,7 @@ export class Context {
    */
   public halt(): Expression {
     // Print a stacktrace of the user-facing macros that lead to the failure.
-    this.console.group("");
     this.printStack();
-    this.console.groupEnd();
 
     // Caught in `evaluate`, never leaks.
     throw haltEvaluation;
@@ -536,7 +423,7 @@ export class Context {
   public printStack() {
     let s = this.stack;
     while (!s.isEmpty()) {
-      this.console.log("at", styleDebuggingInformation(s.peek()!));
+      this.loggingBackend.log("  at", styleDebuggingInformation(s.peek()!));
       s = s.pop();
     }
   }
@@ -694,31 +581,41 @@ export class Context {
   // Terminate execution and give a helpful error message.
   // deno-lint-ignore no-explicit-any
   private printNonExp(x: any): Expression {
-    this.error(
+    this.log(
+      renderMessagePrefix("error", 0),
       `Tried to evaluate a javascript value that was no macromania expression.`,
     );
-    this.error(
+    this.log(
+      renderMessagePrefix("error", 1),
       `Did you put {someJavascript} into a jsx element that evaluated to a non-expression?`,
     );
-    this.error(
+    this.log(
+      renderMessagePrefix("error", 1),
       `Evaluation cannor recover, but here are the value, its json representation, and a macro stacktrace for you to find abd fix the mistake.`,
     );
-    this.error();
-    this.error(`The offending value, as passed to console.log():`);
-    this.error(x);
-    this.error();
-    this.error(`The offending value, as passed to JSON.stringify():`);
-    this.error(JSON.stringify(x));
-    this.error();
-    this.error(`The stack of macro invocations leading to this predicament:`);
+    this.log();
+    this.log(
+      renderMessagePrefix("error", 1),
+      `The offending value, as passed to console.log():`,
+    );
+    this.log(x);
+    this.log();
+    this.log(
+      renderMessagePrefix("error", 1),
+      `The offending value, as passed to JSON.stringify():`,
+    );
+    this.log(JSON.stringify(x));
+    this.log();
+    this.log(
+      renderMessagePrefix("error", 1),
+      `The stack of macro invocations leading to this predicament:`,
+    );
     return this.halt();
   }
 
   private logBlockingExpressions(exp: Expression) {
     // Prepare for logging, then call a recursive subroutine to do the actual work.
-    this.console.group("Evaluation was blocked by:");
     this.doLogBlockingExpressions(exp, {});
-    this.console.groupEnd();
   }
 
   private doLogBlockingExpressions(
@@ -732,7 +629,7 @@ export class Context {
         this.doLogBlockingExpressions(inner, info);
       }
     } else if (expIsImpure(exp)) {
-      this.console.log(styleDebuggingInformation(info));
+      this.loggingBackend.log("  ", styleDebuggingInformation(info));
     } else if (expIsPreprocess(exp)) {
       this.doLogBlockingExpressions(exp.preprocess.exp, info);
     } else if (expIsPostprocess(exp)) {
@@ -745,20 +642,6 @@ export class Context {
   }
 }
 
-export type LoggingLevel = "trace" | "info" | "warn" | "error";
-
-function loggingLevelLte(l1: LoggingLevel, l2: LoggingLevel): boolean {
-  if (l1 === "trace") {
-    return true;
-  } else if (l1 === "info" && l2 != "trace") {
-    return true;
-  } else if (l1 === "warn" && l2 != "trace" && l2 != "info") {
-    return true;
-  } else {
-    return l2 === "error";
-  }
-}
-
 /**
  * Utility type for macros that accept an arbitrary number of children.
  * Use with {@linkcode expressions} to convert into an `Expression[]`.
@@ -766,8 +649,8 @@ function loggingLevelLte(l1: LoggingLevel, l2: LoggingLevel): boolean {
 export type Expressions = undefined | Expression | Expression[];
 
 /**
- * Take the output of a jsx transform and turn it into an {@linq Expression}
- * array.
+ * Take the output of a jsx transform and turn it into an array of
+ * {@linkcode Expression}s.
  * @param children Some {@linkcode Expressions} to convert.
  * @returns An array of {@linkcode Expression} containing all children.
  */
@@ -809,7 +692,9 @@ type PropsImpure = {
    * Produce an {@linkcode Expression} from a {@linkcode Context}, or signal
    * that this is currently impossible by returning `null`, causing this
    * expression to be scheduled for a later evaluation attempt.
+   *
    * @param ctx - The {@linkcode Context} to counsel for expression generation.
+   *
    * @returns `null` to reschedule evaluating this, or an
    * {@linkcode Expression} to evaluate next.
    */
