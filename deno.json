@@ -14,6 +14,6 @@
   },
 
   "tasks": {
-    "test": "deno test tutorial.tsx && deno test tests.tsx",
+    "test": "deno test test/tutorial.tsx && deno test test/tests.tsx",
   },
 }

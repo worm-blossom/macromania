@@ -12,7 +12,7 @@ Welcome to the Macromania tutorial. You can start reading this file without
 knowing anything about Macromania. The tutorial walks you through all the
 features of Macromania. It also happens to double as a test suite.
 */
-import { assertEquals } from "https://deno.land/std@0.213.0/assert/mod.ts";
+import { assertEquals } from "../devDeps.ts";
 
 ///////////////////
 // 1. The Basics //
@@ -22,7 +22,7 @@ import { assertEquals } from "https://deno.land/std@0.213.0/assert/mod.ts";
 Macromania defines a type `Expression`. You give Macromania an `Expression`, and
 it expands the expression into a string.
 */
-import { Context, Expression } from "./mod.ts";
+import { Context, Expression } from "../mod.ts";
 
 /*
 The most basic expression is a string, which evaluates to itself:
@@ -178,7 +178,7 @@ As a first demonstration, we define a simple counter macro that evaluates to an
 incrementing number each time.
 */
 
-import { createSubstate } from "./mod.ts";
+import { createSubstate } from "../mod.ts";
 
 Deno.test("counter macro", () => {
   // Create a getter and a setter for some macro-specific state.
@@ -484,7 +484,7 @@ the typechecker start complaining because of the way that jsx gets compiled.
 
 Use the `Expressions` type and the `expressions` function to work around it.
 */
-import { Expressions, expressions } from "./mod.ts";
+import { Expressions, expressions } from "../mod.ts";
 
 Deno.test("many children", () => {
   function Many({ children }: { children?: Expressions }): Expression {

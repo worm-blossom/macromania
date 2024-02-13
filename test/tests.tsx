@@ -2,10 +2,7 @@
 Some additional tests that did not make sense in the tutorial.
 */
 
-import {
-  assertEquals,
-  fail,
-} from "https://deno.land/std@0.213.0/assert/mod.ts";
+import { assertEquals } from "../devDeps.ts";
 import {
   Context,
   DebuggingInformation,
@@ -13,8 +10,8 @@ import {
   Expressions,
   expressions,
   styleDebuggingInformation,
-} from "./mod.ts";
-import { newStack, Stack } from "./stack.ts";
+} from "../mod.ts";
+import { newStack, Stack } from "../stack.ts";
 
 function assertStack(s_: Stack<DebuggingInformation>, expected: string[]) {
   function report() {
