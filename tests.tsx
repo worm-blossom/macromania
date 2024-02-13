@@ -404,3 +404,72 @@ Deno.test("stack 9", () => {
 
   assertStack(stack, ["C", "A"]);
 });
+
+Deno.test("array combines string correctly with delayed invocations", () => {
+  function A() {
+    let i = 0;
+    return (
+      <impure
+        fun={(ctx) => {
+          if (i < 3) {
+            i += 1;
+            return null;
+          } else {
+            return "";
+          }
+        }}
+      />
+    );
+  }
+
+  function B() {
+    let i = 0;
+    return (
+      <impure
+        fun={(ctx) => {
+          if (i < 2) {
+            i += 1;
+            return null;
+          } else {
+            return "";
+          }
+        }}
+      />
+    );
+  }
+
+  function C() {
+    let i = 0;
+    return (
+      <impure
+        fun={(ctx) => {
+          if (i < 1) {
+            i += 1;
+            return null;
+          } else {
+            return "";
+          }
+        }}
+      />
+    );
+  }
+
+  function Foo(): Expression {
+    return "Foo";
+  }
+
+  const ctx = new Context();
+  const got = ctx.evaluate(
+    <>
+      <Foo />
+      <C />
+      <Foo />
+      <A />
+      <Foo />
+      <B />
+      <Foo />
+      <Foo />
+    </>,
+  );
+  assertEquals(got, `FooFooFooFooFoo`);
+});
