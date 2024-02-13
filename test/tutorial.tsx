@@ -27,9 +27,9 @@ import { Context, Expression } from "../mod.ts";
 /*
 The most basic expression is a string, which evaluates to itself:
 */
-Deno.test("string expression", () => {
+Deno.test("string expression", async () => {
   const ctx = new Context();
-  const got = ctx.evaluate("Hello, world!");
+  const got = await ctx.evaluate("Hello, world!");
   assertEquals(got, "Hello, world!");
 });
 
@@ -43,9 +43,9 @@ a new `Context`, pass an `Expression` (in this case, a string) to its
 To evaluate a sequence of expressions and concatenate the results, use a
 `FragmentExpression`:
 */
-Deno.test("fragment expression", () => {
+Deno.test("fragment expression", async () => {
   const ctx = new Context();
-  const got = ctx.evaluate({ fragment: ["Hello,", " world", "!"] });
+  const got = await ctx.evaluate({ fragment: ["Hello,", " world", "!"] });
   assertEquals(got, "Hello, world!");
 });
 
@@ -53,13 +53,13 @@ Deno.test("fragment expression", () => {
 This is all nice and dandy, but not worth the effort so far. What we still lack
 are _macros_. A macro is a function that returns an expression.
 */
-Deno.test("simple macro", () => {
+Deno.test("simple macro", async () => {
   function Em({ children }: { children: Expression }): Expression {
     return { fragment: ["*", children, "*"] };
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(
+  const got = await ctx.evaluate(
     Em({ children: "Hello, world!" }),
   );
   assertEquals(got, "*Hello, world!*");
@@ -74,13 +74,13 @@ There is a good reason for the rather unconventional argument type of the
 preceding `Em` macro: We can use
 [jsx](https://react.dev/learn/writing-markup-with-jsx) in macromania.
 */
-Deno.test("simple macro jsx", () => {
+Deno.test("simple macro jsx", async () => {
   function Em({ children }: { children: Expression }): Expression {
     return <>*{children}*</>; // A jsx fragment compiles into a FragmentExpression
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(<Em>Hello</Em>);
+  const got = await ctx.evaluate(<Em>Hello</Em>);
   assertEquals(got, "*Hello*");
 });
 
@@ -109,7 +109,7 @@ letter. Lowercase namess are reserved for built-in macros.
 The `args` key of the single argument of each macro determines how many
 expressions can go between the opening and closing tag of a macro invocation:
 */
-Deno.test("jsx two children", () => {
+Deno.test("jsx two children", async () => {
   function Greet(
     { children }: { children: [Expression, Expression] },
   ): Expression {
@@ -117,7 +117,7 @@ Deno.test("jsx two children", () => {
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(
+  const got = await ctx.evaluate(
     <Greet>
       {"Hello"}
       {"World"}
@@ -126,7 +126,7 @@ Deno.test("jsx two children", () => {
   assertEquals(got, "Hello, World!");
 });
 
-Deno.test("jsx two or more children", () => {
+Deno.test("jsx two or more children", async () => {
   function Join(
     { children }: { children: Expression[] },
   ): Expression {
@@ -134,17 +134,17 @@ Deno.test("jsx two or more children", () => {
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(<Join>foo{"bar"}baz</Join>);
+  const got = await ctx.evaluate(<Join>foo{"bar"}baz</Join>);
   assertEquals(got, "foo::bar::baz");
 });
 
-Deno.test("jsx no children", () => {
+Deno.test("jsx no children", async () => {
   function Flubb(): Expression {
     return "Flubb!";
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(<Flubb />);
+  const got = await ctx.evaluate(<Flubb />);
   assertEquals(got, "Flubb!");
 });
 
@@ -152,7 +152,7 @@ Deno.test("jsx no children", () => {
 Any argument key other than `children` can be used to define props:
 */
 
-Deno.test("jsx props", () => {
+Deno.test("jsx props", async () => {
   function Exclaim(
     { repetitions, children }: { repetitions: number; children: Expression },
   ): Expression {
@@ -160,7 +160,7 @@ Deno.test("jsx props", () => {
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(<Exclaim repetitions={3}>Hi</Exclaim>);
+  const got = await ctx.evaluate(<Exclaim repetitions={3}>Hi</Exclaim>);
   assertEquals(got, "Hi!!!");
 });
 
@@ -180,7 +180,7 @@ incrementing number each time.
 
 import { createSubstate } from "../mod.ts";
 
-Deno.test("counter macro", () => {
+Deno.test("counter macro", async () => {
   // Create a getter and a setter for some macro-specific state.
   const [getCount, setCount] = createSubstate<number /* type of the state*/>(
     0, // the initial state
@@ -198,7 +198,7 @@ Deno.test("counter macro", () => {
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(
+  const got = await ctx.evaluate(
     <>
       <Count /> <Count /> <Count />
     </>,
@@ -221,7 +221,7 @@ Impure expressions are mostly used as an internal representation for Macromania.
 Macro authors would typically use the `impure` intrinsic for creating them; here
 is an example where we build a simple system of definitions and references:
 */
-Deno.test("defs and refs", () => {
+Deno.test("defs and refs", async () => {
   // Create a getter and a setter for our state: a mapping from short ids to
   // links.
   const [getDefs, _setDefs] = createSubstate<Map<string, string>>(
@@ -254,7 +254,7 @@ Deno.test("defs and refs", () => {
   }
 
   const ctx1 = new Context();
-  const got1 = ctx1.evaluate(
+  const got1 = await ctx1.evaluate(
     <>
       <Def name="squirrel" link="https://en.wikipedia.org/wiki/Squirrel" />
       Look, a <Ref name="squirrel" />!
@@ -273,7 +273,7 @@ Deno.test("defs and refs", () => {
   evaluation fails:
   */
   const ctx2 = new Context();
-  const got2 = ctx2.evaluate(
+  const got2 = await ctx2.evaluate(
     <>
       <Ref name="squirrel" /> ahead!
       <Def name="squirrel" link="https://en.wikipedia.org/wiki/Squirrel" />
@@ -302,7 +302,7 @@ Deno.test("defs and refs", () => {
   }
 
   const ctx3 = new Context();
-  const got3 = ctx3.evaluate(
+  const got3 = await ctx3.evaluate(
     <>
       <PatientRef name="squirrel" /> ahead!
       <Def name="squirrel" link="https://en.wikipedia.org/wiki/Squirrel" />
@@ -320,7 +320,7 @@ Deno.test("defs and refs", () => {
   infinite loop.
   */
   const ctx4 = new Context();
-  const got4 = ctx4.evaluate(
+  const got4 = await ctx4.evaluate(
     <>
       <PatientRef name="squirrel" />!
     </>,
@@ -351,7 +351,7 @@ Deno.test("defs and refs", () => {
   }
 
   const ctx5 = new Context();
-  const got5 = ctx5.evaluate(
+  const got5 = await ctx5.evaluate(
     <>
       <MostlyPatientRef name="squirrel" /> ahead!
     </>,
@@ -372,7 +372,7 @@ In the following example, we build a macro for nested markdown sections that
 automatically uses the correkt markup for headings.
 */
 // Create a getter and a setter for section depth.
-Deno.test("nested markdown sections", () => {
+Deno.test("nested markdown sections", async () => {
   const [getDepth, setDepth] = createSubstate<number>(0);
 
   // Render the markup for a heading.
@@ -402,7 +402,7 @@ Deno.test("nested markdown sections", () => {
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(
+  const got = await ctx.evaluate(
     <Section title="My Text">
       <>
         Bla bla bla{"\n"}
@@ -439,14 +439,14 @@ are created via the `map` intrinsic. They wrap an expression, and once that
 expression has been evaluated to a string, it is given to a function that can
 turn it into an arbitrary new expression.
 */
-Deno.test("yell", () => {
+Deno.test("yell", async () => {
   function Yell({ children }: { children: Expression }): Expression {
     const fun = (evaled: string, ctx: Context) => evaled.toUpperCase();
     return <map fun={fun}>{children}</map>;
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(<Yell>Help!</Yell>);
+  const got = await ctx.evaluate(<Yell>Help!</Yell>);
   assertEquals(got, "HELP!");
 });
 
@@ -458,9 +458,9 @@ Deno.test("yell", () => {
 The `omnomnom` intrinsic wraps an expression. This expression gets evaluated for
 any side-effects, but the intrinsic then evaluates to the empty string.
 */
-Deno.test("omnomnom", () => {
+Deno.test("omnomnom", async () => {
   const ctx = new Context();
-  const got = ctx.evaluate(
+  const got = await ctx.evaluate(
     <omnomnom>Actually, I believe the artist *really* wants to...</omnomnom>,
   );
   assertEquals(got, "");
@@ -470,9 +470,9 @@ Deno.test("omnomnom", () => {
 The `fragment` intrinsic can be used to convert an array of Expressions into
 a FragmentExpression:
 */
-Deno.test("fragment intrinsic", () => {
+Deno.test("fragment intrinsic", async () => {
   const ctx = new Context();
-  const got = ctx.evaluate(
+  const got = await ctx.evaluate(
     <fragment exps={["a", "b", "c"]} />,
   );
   assertEquals(got, "abc");
@@ -486,27 +486,141 @@ Use the `Expressions` type and the `expressions` function to work around it.
 */
 import { Expressions, expressions } from "../mod.ts";
 
-Deno.test("many children", () => {
+Deno.test("many children", async () => {
   function Many({ children }: { children?: Expressions }): Expression {
     const inner = expressions(children);
     return `${inner.length}`;
   }
 
   const ctx1 = new Context();
-  const got1 = ctx1.evaluate(<Many />);
+  const got1 = await ctx1.evaluate(<Many />);
   assertEquals(got1, "0");
 
   const ctx2 = new Context();
-  const got2 = ctx2.evaluate(<Many>foo</Many>);
+  const got2 = await ctx2.evaluate(<Many>foo</Many>);
   assertEquals(got2, "1");
 
   const ctx3 = new Context();
-  const got3 = ctx3.evaluate(<Many>{"foo"}{"bar"}{"baz"}</Many>);
+  const got3 = await ctx3.evaluate(<Many>{"foo"}{"bar"}{"baz"}</Many>);
   assertEquals(got3, "3");
 });
 
+//////////////////
+// Async Macros //
+//////////////////
+
 /*
-And this really is it.
+The `evaluate` method of `Context` is asynchronous. The functions of any impure, lifecycle or map expression can be asynchronous and everything still works!
+*/
+
+import { encodeHex } from "../devDeps.ts";
+Deno.test("async map", async () => {
+  function Sha256({ children }: { children: Expression }): Expression {
+    return (
+      <map
+        fun={async (evaled, ctx) => {
+          // Yes, for some mysterious reason, WebCrypto hash functions are async.
+          const rawDigest = await crypto.subtle.digest(
+            "SHA-256",
+            new TextEncoder().encode(evaled),
+          );
+          return encodeHex(rawDigest);
+        }}
+      >
+        {children}
+      </map>
+    );
+  }
+
+  const ctx = new Context();
+  const got = await ctx.evaluate(<Sha256>Hello, world!</Sha256>);
+  assertEquals(
+    got,
+    "315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3",
+  );
+});
+
+/*
+Note that using async functions in Macromania does not automatically result in concurrent macro evaluation; fragments still evaluate everything sequentially:
+*/
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, milliseconds));
+}
+
+Deno.test("sequential async fragments", async () => {
+  const ctx = new Context();
+  let counter = 0;
+  const got = await ctx.evaluate(
+    <>
+      <impure
+        fun={async (ctx) => {
+          await sleep(1); // really fast
+          counter += 1;
+          return `${counter}`;
+        }}
+      />
+      <impure
+        fun={async (ctx) => {
+          await sleep(99); // really slow
+          counter += 1;
+          return `${counter}`;
+        }}
+      />
+      <impure
+        fun={async (ctx) => {
+          await sleep(50); // in between
+          counter += 1;
+          return `${counter}`;
+        }}
+      />
+    </>,
+  );
+  assertEquals(got, "123");
+  // Takes 150 milliseconds to evaluate.
+});
+
+/*
+To evaluate macros concurrently (but still concatenate the resuls in the order
+in which the macros were given), use the `<concurrent>` intrinsic:
+*/
+
+Deno.test("concurrent macros", async () => {
+  const ctx = new Context();
+  let counter = 0;
+  // The only change to the previous example that we use `<concurrent>` instead
+  // of `<>`
+  const got = await ctx.evaluate(
+    <concurrent>
+      <impure
+        fun={async (ctx) => {
+          await sleep(1); // really fast
+          counter += 1;
+          return `${counter}`;
+        }}
+      />
+      <impure
+        fun={async (ctx) => {
+          await sleep(99); // really slow
+          counter += 1;
+          return `${counter}`;
+        }}
+      />
+      <impure
+        fun={async (ctx) => {
+          await sleep(50); // in between
+          counter += 1;
+          return `${counter}`;
+        }}
+      />
+    </concurrent>,
+  );
+  assertEquals(got, "132");
+  // Takes 99 milliseconds to evaluate.
+});
+
+/*
+And that concludes the tutorial.
 
 To develop a complete understanding of Macromania's workings, We recommend
 reading the source code. It is pretty straightforward, well-commented, and not

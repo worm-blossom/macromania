@@ -31,6 +31,7 @@ export type Expression =
   | PreprocessExpression
   | PostprocessExpression
   | MapExpression
+  | ConcurrentExpression
   | DebugExpression;
 
 /**
@@ -45,7 +46,11 @@ type FragmentExpression = { fragment: Expression[] };
  * cannot be evaluated just yet. In that case, it is called again in the
  * next evaluation round.
  */
-type ImpureExpression = { impure: (ctx: Context) => Expression | null };
+type ImpureExpression = {
+  impure:
+    | ((ctx: Context) => Expression | null)
+    | ((ctx: Context) => Promise<Expression | null>);
+};
 
 /**
  * Call a function for its side-effects before attempting to evaluate a
@@ -54,7 +59,7 @@ type ImpureExpression = { impure: (ctx: Context) => Expression | null };
 type PreprocessExpression = {
   preprocess: {
     exp: Expression;
-    fun: (ctx: Context) => void;
+    fun: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
   };
 };
 
@@ -65,7 +70,7 @@ type PreprocessExpression = {
 type PostprocessExpression = {
   postprocess: {
     exp: Expression;
-    fun: (ctx: Context) => void;
+    fun: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
   };
 };
 
@@ -76,9 +81,17 @@ type PostprocessExpression = {
 type MapExpression = {
   map: {
     exp: Expression;
-    fun: (evaluated: string, ctx: Context) => Expression;
+    fun:
+      | ((evaluated: string, ctx: Context) => Expression)
+      | ((evaluated: string, ctx: Context) => Promise<Expression>);
   };
 };
+
+/**
+ * Evaluate macros concurrently and concatenate the results in the order in
+ * which the macros were supplied.
+ */
+type ConcurrentExpression = { concurrent: Expression[] };
 
 /**
  * Attach debugging information to an expression. This makes the expression
@@ -119,6 +132,12 @@ function expIsMap(
   exp: Expression,
 ): exp is MapExpression {
   return (typeof exp !== "string") && ("map" in exp);
+}
+
+function expIsConcurrent(
+  exp: Expression,
+): exp is ConcurrentExpression {
+  return (typeof exp !== "string") && ("concurrent" in exp);
 }
 
 function expIsDebug(
@@ -177,6 +196,10 @@ function canBeEvaluatedOneStep(x: any): boolean {
         return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
           Object.hasOwn(inner, "exp");
       }
+    } else if (Object.hasOwn(x, "concurrent")) {
+      // We might have a concurrent expression.
+      // Check if the inner value is an array.
+      return Array.isArray(x.concurrent);
     } else if (Object.hasOwn(x, "debug")) {
       // We might have a debug expression.
       const inner = x.debug;
@@ -428,7 +451,7 @@ export class Context {
   }
 
   // Attempt to evaluate a single Expression.
-  private doEvaluate(exp: Expression): Expression {
+  private async doEvaluate(exp: Expression): Promise<Expression> {
     if (!canBeEvaluatedOneStep(exp)) {
       this.printNonExp(exp);
     }
@@ -442,7 +465,7 @@ export class Context {
       const evaluated: Expression[] = [];
       let previousEvaluatedToString = false;
       for (const inner of exp.fragment) {
-        const innerEvaluated = this.doEvaluate(inner);
+        const innerEvaluated = await this.doEvaluate(inner);
 
         if (typeof innerEvaluated === "string") {
           if (previousEvaluatedToString) {
@@ -470,7 +493,7 @@ export class Context {
         return { fragment: evaluated };
       }
     } else if (expIsImpure(exp)) {
-      const unthunk = exp.impure(this);
+      const unthunk = await exp.impure(this);
       if (unthunk === null) {
         return exp; // Try again next evaluation round.
       } else {
@@ -478,9 +501,9 @@ export class Context {
         return this.doEvaluate(unthunk);
       }
     } else if (expIsPreprocess(exp)) {
-      exp.preprocess.fun(this);
+      await exp.preprocess.fun(this);
 
-      const evaluated = this.doEvaluate(exp.preprocess.exp);
+      const evaluated = await this.doEvaluate(exp.preprocess.exp);
       if (typeof evaluated === "string") {
         return evaluated;
       } else {
@@ -488,8 +511,8 @@ export class Context {
         return exp;
       }
     } else if (expIsPostprocess(exp)) {
-      const evaluated = this.doEvaluate(exp.postprocess.exp);
-      exp.postprocess.fun(this);
+      const evaluated = await this.doEvaluate(exp.postprocess.exp);
+      await exp.postprocess.fun(this);
 
       if (typeof evaluated === "string") {
         return evaluated;
@@ -498,18 +521,53 @@ export class Context {
         return exp;
       }
     } else if (expIsMap(exp)) {
-      const evaluated = this.doEvaluate(exp.map.exp);
+      const evaluated = await this.doEvaluate(exp.map.exp);
 
       if (typeof evaluated === "string") {
-        const mapped = exp.map.fun(evaluated, this);
+        const mapped = await exp.map.fun(evaluated, this);
         return this.doEvaluate(mapped);
       } else {
         exp.map.exp = evaluated;
         return exp;
       }
+    } else if (expIsConcurrent(exp)) {
+      // Evaluate all subexpressions concurrently.
+      const allEvaluated = await Promise.all(
+        exp.concurrent.map((inner) => this.doEvaluate(inner)),
+      );
+
+      // Combine adjacent strings.
+      const compressed: Expression[] = [];
+      let previousEvaluatedToString = false;
+      for (const innerEvaluated of allEvaluated) {
+        if (typeof innerEvaluated === "string") {
+          if (previousEvaluatedToString) {
+            compressed[compressed.length - 1] =
+              (<string> compressed[compressed.length - 1]).concat(
+                innerEvaluated,
+              );
+          } else {
+            previousEvaluatedToString = true;
+            compressed.push(innerEvaluated);
+          }
+        } else {
+          compressed.push(innerEvaluated);
+          previousEvaluatedToString = false;
+        }
+      }
+
+      // Further simplify the array of evaluated expressions if possible,
+      // otherwise return it directly.
+      if (compressed.length === 0) {
+        return "";
+      } else if (compressed.length === 1) {
+        return compressed[0];
+      } else {
+        return { concurrent: compressed };
+      }
     } else if (expIsDebug(exp)) {
       this.stack = this.stack.push(exp.debug.info);
-      const evaluated = this.doEvaluate(exp.debug.exp);
+      const evaluated = await this.doEvaluate(exp.debug.exp);
       this.stack = this.stack.pop();
       if (typeof evaluated === "string") {
         return evaluated;
@@ -525,7 +583,7 @@ export class Context {
   /**
    * Evaluate an expression to a string, or return `null` in case of failure.
    */
-  public evaluate(expression: Expression): string | null {
+  public async evaluate(expression: Expression): Promise<string | null> {
     currentlyEvaluating = true;
 
     // We catch any thrown `haltEvaluation` values.
@@ -536,7 +594,7 @@ export class Context {
       // evaluating it again.
       let exp = expression;
       while (typeof exp != "string") {
-        exp = this.doEvaluate(exp);
+        exp = await this.doEvaluate(exp);
 
         if (!this.madeProgressThisRound) {
           if (this.haveToMakeProgress) {
@@ -623,8 +681,8 @@ export class Context {
   ) {
     if (typeof exp === "string") {
       return;
-    } else if (Array.isArray(exp)) {
-      for (const inner of exp) {
+    } else if (expIsFragment(exp)) {
+      for (const inner of exp.fragment) {
         this.doLogBlockingExpressions(inner, info);
       }
     } else if (expIsImpure(exp)) {
@@ -635,6 +693,10 @@ export class Context {
       this.doLogBlockingExpressions(exp.postprocess.exp, info);
     } else if (expIsMap(exp)) {
       this.doLogBlockingExpressions(exp.map.exp, info);
+    } else if (expIsConcurrent(exp)) {
+      for (const inner of exp.concurrent) {
+        this.doLogBlockingExpressions(inner, info);
+      }
     } else if (expIsDebug(exp)) {
       this.doLogBlockingExpressions(exp.debug.exp, exp.debug.info);
     }
@@ -674,6 +736,7 @@ type MacromaniaIntrinsic =
   | "omnomnom"
   | "impure"
   | "map"
+  | "concurrent"
   | "lifecycle";
 
 type PropsOmnomnom = { children: Expressions };
@@ -697,7 +760,9 @@ type PropsImpure = {
    * @returns `null` to reschedule evaluating this, or an
    * {@linkcode Expression} to evaluate next.
    */
-  fun: (ctx: Context) => Expression | null;
+  fun:
+    | ((ctx: Context) => Expression | null)
+    | ((ctx: Context) => Promise<Expression | null>);
 };
 
 type PropsMap = {
@@ -710,13 +775,23 @@ type PropsMap = {
    * @param ctx - The {@linkcode Context} to counsel for expression generation.
    * @returns An {@linkcode Expression} to evaluate next.
    */
-  fun: (evaluated: string, ctx: Context) => void;
+  fun:
+    | ((evaluated: string, ctx: Context) => Expression)
+    | ((evaluated: string, ctx: Context) => Promise<Expression>);
 };
 
 type PropsLifecycle = {
   children: Expressions;
-  pre?: (ctx: Context) => void;
-  post?: (ctx: Context) => void;
+  pre?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
+  post?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
+};
+
+type PropsConcurrent = {
+  /**
+   * The expressions to form the contents of the created
+   * {@linkcode ConcurrentExpression}.
+   */
+  children: Expressions;
 };
 
 export declare namespace JSX {
@@ -755,6 +830,10 @@ export declare namespace JSX {
      * expressions.
      */
     lifecycle: PropsLifecycle;
+    /**
+     * Evaluate an array of expressions concurrently, and concatenate the results.
+     */
+    concurrent: PropsConcurrent;
   }
 
   interface ElementAttributesProperty {
@@ -839,6 +918,8 @@ export function jsxDEV(
         fun: props.pre ?? ((_) => {}),
       },
     }, info);
+  } else if (macro === "concurrent") {
+    return maybeWrapWithInfo({ concurrent: expressions(props.children) }, info);
   } else {
     macroDepth += 1;
     const exp = macro(props);

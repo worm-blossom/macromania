@@ -39,7 +39,7 @@ function assertStack(s_: Stack<DebuggingInformation>, expected: string[]) {
   }
 }
 
-Deno.test("stack simple", () => {
+Deno.test("stack simple", async () => {
   function A({ children }: { children: Expression }): Expression {
     return children;
   }
@@ -62,7 +62,7 @@ Deno.test("stack simple", () => {
   }
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       <B>bla</B>
     </A>,
@@ -71,7 +71,7 @@ Deno.test("stack simple", () => {
   assertStack(stack, ["B", "A"]);
 });
 
-Deno.test("stack 2", () => {
+Deno.test("stack 2", async () => {
   function A({ children }: { children: Expression }): Expression {
     return children;
   }
@@ -104,7 +104,7 @@ Deno.test("stack 2", () => {
   }
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       <B>
         <C>bla</C>
@@ -115,7 +115,7 @@ Deno.test("stack 2", () => {
   assertStack(stack, ["C", "B", "A"]);
 });
 
-Deno.test("stack 3", () => {
+Deno.test("stack 3", async () => {
   function A({ children }: { children: Expression }): Expression {
     return children;
   }
@@ -154,7 +154,7 @@ Deno.test("stack 3", () => {
   }
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       <B>
         <C>bla</C>
@@ -165,7 +165,7 @@ Deno.test("stack 3", () => {
   assertStack(stack, ["C", "B", "A"]);
 });
 
-Deno.test("stack 4", () => {
+Deno.test("stack 4", async () => {
   function A({ children }: { children: Expressions }): Expression {
     return <fragment exps={expressions(children)} />;
   }
@@ -198,7 +198,7 @@ Deno.test("stack 4", () => {
   }
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       <B>
         <A>hi</A>
@@ -212,7 +212,7 @@ Deno.test("stack 4", () => {
   assertStack(stack, ["C", "B", "A"]);
 });
 
-Deno.test("stack 5", () => {
+Deno.test("stack 5", async () => {
   function A({ children }: { children: Expression }): Expression {
     return (
       <map
@@ -239,7 +239,7 @@ Deno.test("stack 5", () => {
   let stack: Stack<DebuggingInformation> = newStack();
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       hi
     </A>,
@@ -248,7 +248,7 @@ Deno.test("stack 5", () => {
   assertStack(stack, ["A"]);
 });
 
-Deno.test("stack 6", () => {
+Deno.test("stack 6", async () => {
   function A({ children }: { children: Expression }): Expression {
     return (
       <impure
@@ -273,7 +273,7 @@ Deno.test("stack 6", () => {
   let stack: Stack<DebuggingInformation> = newStack();
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       hi
     </A>,
@@ -282,7 +282,7 @@ Deno.test("stack 6", () => {
   assertStack(stack, ["A"]);
 });
 
-Deno.test("stack 7", () => {
+Deno.test("stack 7", async () => {
   function A({ children }: { children: Expression }): Expression {
     return <C>bla</C>;
   }
@@ -301,7 +301,7 @@ Deno.test("stack 7", () => {
   let stack: Stack<DebuggingInformation> = newStack();
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       hi
     </A>,
@@ -310,7 +310,7 @@ Deno.test("stack 7", () => {
   assertStack(stack, ["A"]);
 });
 
-Deno.test("stack 8", () => {
+Deno.test("stack 8", async () => {
   function A({ children }: { children: Expression }): Expression {
     return (
       <map
@@ -351,7 +351,7 @@ Deno.test("stack 8", () => {
   }
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       hi
     </A>,
@@ -360,7 +360,7 @@ Deno.test("stack 8", () => {
   assertStack(stack, ["A"]);
 });
 
-Deno.test("stack 9", () => {
+Deno.test("stack 9", async () => {
   function A({ children }: { children: Expressions }): Expression {
     return (
       <map
@@ -392,7 +392,7 @@ Deno.test("stack 9", () => {
   let stack: Stack<DebuggingInformation> = newStack();
 
   const ctx = new Context();
-  const _got = ctx.evaluate(
+  const _got = await ctx.evaluate(
     <A>
       <D />
       <C>bla</C>
@@ -402,7 +402,7 @@ Deno.test("stack 9", () => {
   assertStack(stack, ["C", "A"]);
 });
 
-Deno.test("array combines string correctly with delayed invocations", () => {
+Deno.test("array combines string correctly with delayed invocations", async () => {
   function A() {
     let i = 0;
     return (
@@ -456,7 +456,7 @@ Deno.test("array combines string correctly with delayed invocations", () => {
   }
 
   const ctx = new Context();
-  const got = ctx.evaluate(
+  const got = await ctx.evaluate(
     <>
       <Foo />
       <C />
@@ -469,4 +469,45 @@ Deno.test("array combines string correctly with delayed invocations", () => {
     </>,
   );
   assertEquals(got, `FooFooFooFooFoo`);
+});
+
+function delay(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+Deno.test("async impure", async () => {
+  function Foo(): Expression {
+    return < impure fun={async (ctx) => {
+      await delay(10);
+      return "hi!";
+    }} />;
+  }
+
+  const ctx = new Context();
+  const got = await ctx.evaluate(<Foo />);
+  assertEquals(got, `hi!`);
+});
+
+Deno.test("async lifecycle", async () => {
+  function A() {
+    let i = 0;
+    return (
+      <impure
+        fun={(ctx) => {
+          if (i < 1) {
+            i += 1;
+            return null;
+          } else {
+            return "Q";
+          }
+        }}
+      />
+    );
+  }
+
+  const ctx = new Context();
+  const got = await ctx.evaluate(
+    <lifecycle pre={async (ctx) => {await delay(10)}} post={async (ctx) => {await delay(10)}}><A/></lifecycle>
+  );
+  assertEquals(got, `Q`);
 });
