@@ -13,7 +13,7 @@
 
 import * as Colors from "https://deno.land/std@0.204.0/fmt/colors.ts";
 import { newStack, Stack } from "./stack.ts";
-import { renderMessagePrefix } from "../macromania-logger/deps.ts";
+import { renderMessagePrefix } from "../logging-utils/mod.ts";
 
 /**
  * An expression, to be evaluated to a string.
