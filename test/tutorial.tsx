@@ -455,7 +455,7 @@ Deno.test("yell", async () => {
 ///////////////////
 
 /*
-The `omnomnom` intrinsic wraps an expression. This expression gets evaluated for
+The `<omnomnom>` intrinsic wraps an expression. This expression gets evaluated for
 any side-effects, but the intrinsic then evaluates to the empty string.
 */
 Deno.test("omnomnom", async () => {
@@ -467,7 +467,18 @@ Deno.test("omnomnom", async () => {
 });
 
 /*
-The `fragment` intrinsic can be used to convert an array of Expressions into
+The `<halt />` intrinsic erroneously halts evaluation when evaluated.
+*/
+Deno.test("halt intrinsic", async () => {
+  const ctx = new Context();
+  const got = await ctx.evaluate(
+    <halt />,
+  );
+  assertEquals(got, null);
+});
+
+/*
+The `<fragment>` intrinsic can be used to convert an array of Expressions into
 a FragmentExpression:
 */
 Deno.test("fragment intrinsic", async () => {
