@@ -472,15 +472,19 @@ Deno.test("array combines string correctly with delayed invocations", async () =
 });
 
 function delay(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 Deno.test("async impure", async () => {
   function Foo(): Expression {
-    return < impure fun={async (ctx) => {
-      await delay(10);
-      return "hi!";
-    }} />;
+    return (
+      <impure
+        fun={async (ctx) => {
+          await delay(10);
+          return "hi!";
+        }}
+      />
+    );
   }
 
   const ctx = new Context();
@@ -507,7 +511,152 @@ Deno.test("async lifecycle", async () => {
 
   const ctx = new Context();
   const got = await ctx.evaluate(
-    <lifecycle pre={async (ctx) => {await delay(10)}} post={async (ctx) => {await delay(10)}}><A/></lifecycle>
+    <lifecycle
+      pre={async (ctx) => {
+        await delay(10);
+      }}
+      post={async (ctx) => {
+        await delay(10);
+      }}
+    >
+      <A />
+    </lifecycle>,
   );
   assertEquals(got, `Q`);
+});
+
+Deno.test("omnomnom", async () => {
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<omnomnom></omnomnom>);
+    assertEquals(got, "");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<omnomnom>oneChild</omnomnom>);
+    assertEquals(got, "");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <omnomnom>oneChild{"anotherChild"}aThirdChild</omnomnom>,
+    );
+    assertEquals(got, "");
+  })();
+});
+
+Deno.test("map", async () => {
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<map fun={(_evaled, _ctx) => "hi"}></map>);
+    assertEquals(got, "hi");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <map fun={(_evaled, _ctx) => "hi"}>oneChild</map>,
+    );
+    assertEquals(got, "hi");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <map fun={(_evaled, _ctx) => "hi"}>
+        oneChild{"anotherChild"}aThirdChild
+      </map>,
+    );
+    assertEquals(got, "hi");
+  })();
+});
+
+Deno.test("lifecycle", async () => {
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<lifecycle></lifecycle>);
+    assertEquals(got, "");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<lifecycle>oneChild</lifecycle>);
+    assertEquals(got, "oneChild");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<lifecycle>a{"b"}c</lifecycle>);
+    assertEquals(got, "abc");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<lifecycle pre={(ctx) => {}}></lifecycle>);
+    assertEquals(got, "");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <lifecycle pre={(ctx) => {}}>oneChild</lifecycle>,
+    );
+    assertEquals(got, "oneChild");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <lifecycle pre={(ctx) => {}}>a{"b"}c</lifecycle>,
+    );
+    assertEquals(got, "abc");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<lifecycle post={(ctx) => {}}></lifecycle>);
+    assertEquals(got, "");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <lifecycle post={(ctx) => {}}>oneChild</lifecycle>,
+    );
+    assertEquals(got, "oneChild");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <lifecycle post={(ctx) => {}}>a{"b"}c</lifecycle>,
+    );
+    assertEquals(got, "abc");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <lifecycle pre={(ctx) => {}} post={(ctx) => {}}></lifecycle>,
+    );
+    assertEquals(got, "");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <lifecycle pre={(ctx) => {}} post={(ctx) => {}}>oneChild</lifecycle>,
+    );
+    assertEquals(got, "oneChild");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <lifecycle pre={(ctx) => {}} post={(ctx) => {}}>a{"b"}c</lifecycle>,
+    );
+    assertEquals(got, "abc");
+  })();
 });

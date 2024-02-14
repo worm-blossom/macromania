@@ -740,7 +740,7 @@ type MacromaniaIntrinsic =
   | "lifecycle"
   | "halt";
 
-type PropsOmnomnom = { children: Expressions };
+type PropsOmnomnom = { children?: Expressions };
 
 type PropsFragment = {
   /**
@@ -767,7 +767,7 @@ type PropsImpure = {
 };
 
 type PropsMap = {
-  children: Expressions;
+  children?: Expressions;
   /**
    * Receive the evaluated children of the `map` intrinsic and map them (and
    * the current {@linkcode Context}) to a new {@linkcode Expression} to
@@ -782,7 +782,7 @@ type PropsMap = {
 };
 
 type PropsLifecycle = {
-  children: Expressions;
+  children?: Expressions;
   pre?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
   post?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
 };
@@ -903,7 +903,7 @@ export function jsxDEV(
 
   if (macro === "omnomnom") {
     return maybeWrapWithInfo({
-      map: { exp: props.children, fun: (_: string, _ctx: Context) => "" },
+      map: { exp: { fragment: expressions(props.children) }, fun: (_: string, _ctx: Context) => "" },
     }, info);
   } else if (macro === "halt") {
     return maybeWrapWithInfo({
