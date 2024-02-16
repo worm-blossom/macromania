@@ -471,7 +471,7 @@ export class Context {
       const compressed = compressExpressions(allEvaluated);
 
       if (Array.isArray(compressed)) {
-        return { concurrent: compressed };
+        return { fragment: compressed };
       } else {
         return compressed;
       }
