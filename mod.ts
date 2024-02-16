@@ -459,38 +459,21 @@ export class Context {
     if (typeof exp === "string") {
       return exp;
     } else if (expIsFragment(exp)) {
-      // Evaluate arrays by successively evaluating their items. Join together
-      // adjacent strings to prevent unncecessarily iterating over them separately
-      // in future evaluation rounds.
-      const evaluated: Expression[] = [];
-      let previousEvaluatedToString = false;
-      for (const inner of exp.fragment) {
-        const innerEvaluated = await this.doEvaluate(inner);
+      // Evaluate arrays by successively evaluating their items.
+      const allEvaluated: Expression[] = [];
 
-        if (typeof innerEvaluated === "string") {
-          if (previousEvaluatedToString) {
-            evaluated[evaluated.length - 1] =
-              (<string> evaluated[evaluated.length - 1]).concat(
-                innerEvaluated,
-              );
-          } else {
-            previousEvaluatedToString = true;
-            evaluated.push(innerEvaluated);
-          }
-        } else {
-          evaluated.push(innerEvaluated);
-          previousEvaluatedToString = false;
-        }
+      for (const inner of exp.fragment) {
+        allEvaluated.push(await this.doEvaluate(inner));
       }
 
-      // Further simplify the array of evaluated expressions if possible,
-      // otherwise return it directly.
-      if (evaluated.length === 0) {
-        return "";
-      } else if (evaluated.length === 1) {
-        return evaluated[0];
+      // Join together adjacent strings to prevent unncecessarily iterating
+      // over them separately in future evaluation rounds.
+      const compressed = compressExpressions(allEvaluated);
+
+      if (Array.isArray(compressed)) {
+        return { concurrent: compressed };
       } else {
-        return { fragment: evaluated };
+        return compressed;
       }
     } else if (expIsImpure(exp)) {
       const unthunk = await exp.impure(this);
@@ -536,34 +519,12 @@ export class Context {
         exp.concurrent.map((inner) => this.doEvaluate(inner)),
       );
 
-      // Combine adjacent strings.
-      const compressed: Expression[] = [];
-      let previousEvaluatedToString = false;
-      for (const innerEvaluated of allEvaluated) {
-        if (typeof innerEvaluated === "string") {
-          if (previousEvaluatedToString) {
-            compressed[compressed.length - 1] =
-              (<string> compressed[compressed.length - 1]).concat(
-                innerEvaluated,
-              );
-          } else {
-            previousEvaluatedToString = true;
-            compressed.push(innerEvaluated);
-          }
-        } else {
-          compressed.push(innerEvaluated);
-          previousEvaluatedToString = false;
-        }
-      }
+      const compressed = compressExpressions(allEvaluated);
 
-      // Further simplify the array of evaluated expressions if possible,
-      // otherwise return it directly.
-      if (compressed.length === 0) {
-        return "";
-      } else if (compressed.length === 1) {
-        return compressed[0];
-      } else {
+      if (Array.isArray(compressed)) {
         return { concurrent: compressed };
+      } else {
+        return compressed;
       }
     } else if (expIsDebug(exp)) {
       this.stack = this.stack.push(exp.debug.info);
@@ -700,6 +661,41 @@ export class Context {
     } else if (expIsDebug(exp)) {
       this.doLogBlockingExpressions(exp.debug.exp, exp.debug.info);
     }
+  }
+}
+
+function compressExpressions(
+  exps: Expression[],
+): string | Expression | Expression[] {
+  const compressed: Expression[] = [];
+
+  // Join adjacent strings.
+  let previousEvaluatedToString = false;
+  for (const innerEvaluated of exps) {
+    if (typeof innerEvaluated === "string") {
+      if (previousEvaluatedToString) {
+        compressed[compressed.length - 1] =
+          (<string> compressed[compressed.length - 1]).concat(
+            innerEvaluated,
+          );
+      } else {
+        previousEvaluatedToString = true;
+        compressed.push(innerEvaluated);
+      }
+    } else {
+      compressed.push(innerEvaluated);
+      previousEvaluatedToString = false;
+    }
+  }
+
+  // Further simplify the array of evaluated expressions if possible,
+  // otherwise return it directly.
+  if (compressed.length === 0) {
+    return "";
+  } else if (compressed.length === 1) {
+    return compressed[0];
+  } else {
+    return compressed;
   }
 }
 
@@ -903,7 +899,10 @@ export function jsxDEV(
 
   if (macro === "omnomnom") {
     return maybeWrapWithInfo({
-      map: { exp: { fragment: expressions(props.children) }, fun: (_: string, _ctx: Context) => "" },
+      map: {
+        exp: { fragment: expressions(props.children) },
+        fun: (_: string, _ctx: Context) => "",
+      },
     }, info);
   } else if (macro === "halt") {
     return maybeWrapWithInfo({

@@ -17,7 +17,7 @@ language. It takes inspiration from lisp-like macro expansion and
 error reporting, principled interaction between stateful macros, and static
 typing for the input expressions.
 
-To learn how to use it, [read the tutorial](./tutorial.tsx). To learn how it
+To learn how to use it, [read the tutorial](./test/tutorial.tsx). To learn how it
 works, [read the source](./main.ts).
 
 Macromania is not a UI library, nor concerned with interactivity. It produces
