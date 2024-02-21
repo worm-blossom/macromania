@@ -734,7 +734,8 @@ type MacromaniaIntrinsic =
   | "map"
   | "concurrent"
   | "lifecycle"
-  | "halt";
+  | "halt"
+  | "exps";
 
 type PropsOmnomnom = { children?: Expressions };
 
@@ -793,6 +794,13 @@ type PropsConcurrent = {
 
 type PropsHalt = Record<string | number | symbol, never>;
 
+type PropsExps = {
+  /**
+   * The `Expressions` to convert into a single expression.
+   */
+  x?: Expressions;
+}
+
 export declare namespace JSX {
   // All jsx evaluates to a number.
   // https://devblogs.microsoft.com/typescript/announcing-typescript-5-1-beta/#decoupled-type-checking-between-jsx-elements-and-jsx-tag-types
@@ -837,6 +845,10 @@ export declare namespace JSX {
      * Print a stacktrace and halt evaluation.
      */
     halt: PropsHalt;
+    /**
+     * Convert some `Expressions` into a single expression.
+     */
+    exps: PropsExps;
   }
 
   interface ElementAttributesProperty {
@@ -930,6 +942,8 @@ export function jsxDEV(
     }, info);
   } else if (macro === "concurrent") {
     return maybeWrapWithInfo({ concurrent: expressions(props.children) }, info);
+  } else if (macro === "exps") {
+    return maybeWrapWithInfo({ fragment: expressions(props.x) }, info);
   } else {
     macroDepth += 1;
     const exp = macro(props);

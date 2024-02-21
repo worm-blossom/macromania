@@ -516,6 +516,29 @@ Deno.test("many children", async () => {
   assertEquals(got3, "3");
 });
 
+/*
+If you need to treat some `Expressions | undefined` as a single `Expression`,
+the `<exps />` intrinsic has you covered:
+*/
+
+Deno.test("exps", async () => {
+  function ExpsDemo({ children }: { children?: Expressions }): Expression {
+    return <exps x={children} />
+  }
+
+  const ctx1 = new Context();
+  const got1 = await ctx1.evaluate(<ExpsDemo />);
+  assertEquals(got1, "");
+
+  const ctx2 = new Context();
+  const got2 = await ctx2.evaluate(<ExpsDemo>foo</ExpsDemo>);
+  assertEquals(got2, "foo");
+
+  const ctx3 = new Context();
+  const got3 = await ctx3.evaluate(<ExpsDemo>{"foo"}{"bar"}{"baz"}</ExpsDemo>);
+  assertEquals(got3, "foobarbaz");
+});
+
 //////////////////
 // Async Macros //
 //////////////////
