@@ -41,4 +41,4 @@ To use jsx syntax for Macromania, you need to configure your typescript compiler
 }
 ```
 
-![A coiled-up worm surrounded by petals, a logo of sorts for the worm-blossom github org](./logotype.jpg)
+![A coiled-up worm surrounded by petals, a logo of sorts for the worm-blossom github org](./wormblossom.png)
