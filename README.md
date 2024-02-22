@@ -1,4 +1,4 @@
-![Logotype of the name of this project: MACROmania](./logotype.jpg)
+![Logotype of the name of this project: MACROmania](./logotypeClean.png)
 
 Text generation made ~~easy~~ simple.
 
