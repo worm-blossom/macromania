@@ -31,12 +31,20 @@ To use jsx syntax for Macromania, you need to configure your typescript compiler
 
 ```json
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Deno",
+
+  "imports": {
+    "macromaniajsx/jsx-dev-runtime": "https://deno.land/x/macromania@v0.1.0/mod.ts",
+    "macromaniajsx/jsx-runtime": "https://deno.land/x/macromania@v0.1.0/mod.ts"
+  },
+
   "compilerOptions": {
     "jsx": "react-jsxdev",
-    "jsxImportSource": "macromaniajsx"
-  },
-  "imports": {
-    "macromaniajsx/jsx-dev-runtime": "path/to/macromanias/main.ts"
+    "jsxImportSource": "macromaniajsx",
   }
 }
 ```
+
+Some text editors might require such configuration not only in the modules that
+use Macromania, but also in the editor's workspace directory.
