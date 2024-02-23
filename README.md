@@ -1,4 +1,4 @@
-![Logotype of the name of this project: MACROmania](./macromania_deco.png)
+![Logotype of the name of this project: Macromania](./macromania_deco.png)
 
 Text generation made ~~easy~~ simple.
 
@@ -40,7 +40,3 @@ To use jsx syntax for Macromania, you need to configure your typescript compiler
   }
 }
 ```
-
-<p align=center>
-  <img alt="A coiled-up worm surrounded by petals, a logo of sorts for the worm-blossom github org" src="./wormblossom.png" />
-</p>
