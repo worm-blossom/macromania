@@ -183,7 +183,7 @@ import { createSubstate } from "../mod.ts";
 Deno.test("counter macro", async () => {
   // Create a getter and a setter for some macro-specific state.
   const [getCount, setCount] = createSubstate<number /* type of the state*/>(
-    0, // the initial state
+    () => 0, // function producing the initial state
   );
 
   function Count(): Expression {
@@ -225,7 +225,7 @@ Deno.test("defs and refs", async () => {
   // Create a getter and a setter for our state: a mapping from short ids to
   // links.
   const [getDefs, _setDefs] = createSubstate<Map<string, string>>(
-    new Map(), // the initial state
+    () => new Map(), // the initial state
   );
 
   // Registers a short name for a link, does not produce any output.
@@ -373,7 +373,7 @@ automatically uses the correkt markup for headings.
 */
 // Create a getter and a setter for section depth.
 Deno.test("nested markdown sections", async () => {
-  const [getDepth, setDepth] = createSubstate<number>(0);
+  const [getDepth, setDepth] = createSubstate<number>(() => 0);
 
   // Render the markup for a heading.
   function AutoHeading(

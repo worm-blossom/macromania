@@ -283,12 +283,12 @@ export type State = Map<symbol, any>;
 /**
  * Create a getter and a setter for a unique, statically typed portion of the
  * {@linkcode State} of a {@linkcode Context}.
- * @param name Name of the substate, for debugging puroses only.
- * @param initial The initial state.
+ * @param name Name of the substate, for debugging purposes only.
+ * @param initial A function that produces the initial state.
  * @returns A getter and a setter for the substate.
  */
 export function createSubstate<S>(
-  initial: S,
+  initial: () => S,
 ): [(ctx: Context) => S, (ctx: Context, newState: S) => void] {
   const key = Symbol();
 
@@ -296,7 +296,7 @@ export function createSubstate<S>(
     const got = ctx.getState().get(key);
 
     if (got === undefined) {
-      ctx.getState().set(key, structuredClone(initial));
+      ctx.getState().set(key, initial());
       return ctx.getState().get(key)!;
     } else {
       return got;
