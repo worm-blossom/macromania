@@ -11,7 +11,8 @@
 
 */
 
-import { Colors, renderMessagePrefix } from "./deps.ts";
+import * as Colors from "@std/fmt/colors";
+import { renderMessagePrefix } from "@aljoscha-meyer/logging-utils";
 import { newStack, Stack } from "./stack.ts";
 
 /**
@@ -420,7 +421,7 @@ export class Context {
    * Return whether evaluation has been given up because no progress could
    * be made.
    */
-  public didGiveUp() {
+  public didGiveUp(): boolean {
     return this.mustMakeProgress() && !this.madeProgressThisRound;
   }
 
@@ -609,7 +610,7 @@ export class Context {
     );
     this.log(
       renderMessagePrefix("error", 1),
-      `Evaluation cannor recover, but here are the value, its json representation, and a macro stacktrace for you to find abd fix the mistake.`,
+      `Evaluation cannot recover, but here are the value, its json representation, and a macro stacktrace for you to find and fix the mistake.`,
     );
     this.log();
     this.log(
@@ -799,7 +800,7 @@ type PropsExps = {
    * The `Expressions` to convert into a single expression.
    */
   x?: Expressions;
-}
+};
 
 export declare namespace JSX {
   // All jsx evaluates to a number.
@@ -968,7 +969,13 @@ function maybeWrapWithInfo(
 }
 
 export function Fragment(
-  { children }: { children: Expression[] },
+  { children }: { children?: Expression | Expression[] },
 ): Expression {
-  return { fragment: children };
+  if (children === undefined) {
+    return { fragment: [] };
+  } else if (Array.isArray(children)) {
+    return { fragment: children };
+  } else {
+    return { fragment: [children] };
+  }
 }

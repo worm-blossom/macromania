@@ -12,7 +12,7 @@ Welcome to the Macromania tutorial. You can start reading this file without
 knowing anything about Macromania. The tutorial walks you through all the
 features of Macromania. It also happens to double as a test suite.
 */
-import { assertEquals } from "../devDeps.ts";
+import { assertEquals } from "@std/assert";
 
 ///////////////////
 // 1. The Basics //
@@ -547,7 +547,7 @@ Deno.test("exps", async () => {
 The `evaluate` method of `Context` is asynchronous. The functions of any impure, lifecycle or map expression can be asynchronous and everything still works!
 */
 
-import { encodeHex } from "../devDeps.ts";
+import { encodeHex } from "@std/encoding/hex";
 Deno.test("async map", async () => {
   function Sha256({ children }: { children: Expression }): Expression {
     return (

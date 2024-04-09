@@ -2,8 +2,16 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "Deno",
 
+  "name": "@wormblossom/macromania",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+
   "imports": {
-    "macromaniajsx/jsx-dev-runtime": "./mod.ts",
+    "@aljoscha-meyer/logging-utils": "jsr:@aljoscha-meyer/logging-utils@^1.0.0",
+    "@std/assert": "jsr:@std/assert@^0.221.0",
+    "@std/encoding": "jsr:@std/encoding@^0.221.0",
+    "@std/fmt": "jsr:@std/fmt@^0.221.0",
+    "macromaniajsx/jsx-dev-runtime": "./mod.ts"
   },
 
   "compilerOptions": {
@@ -14,6 +22,6 @@
   },
 
   "tasks": {
-    "test": "deno test test/tutorial.tsx && deno test test/tests.tsx",
-  },
+    "test": "deno test test/tutorial.tsx && deno test test/tests.tsx"
+  }
 }
