@@ -2,7 +2,7 @@
 Some additional tests that did not make sense in the tutorial.
 */
 
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../devDeps.ts";
 import {
   Context,
   DebuggingInformation,

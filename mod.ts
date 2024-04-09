@@ -11,8 +11,8 @@
 
 */
 
-import * as Colors from "@std/fmt/colors";
-import { renderMessagePrefix } from "@aljoscha-meyer/logging-utils";
+import { Colors } from "./deps.ts";
+import { renderMessagePrefix } from "./deps.ts";
 import { newStack, Stack } from "./stack.ts";
 
 /**
