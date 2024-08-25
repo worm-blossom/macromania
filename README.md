@@ -18,7 +18,7 @@ error reporting, principled interaction between stateful macros, and static
 typing for the input expressions.
 
 To learn how to use it, [read the tutorial](./test/tutorial.tsx). To learn how it
-works, [read the source](./main.ts).
+works, [read the source](./mod.ts).
 
 Macromania is not a UI library, nor concerned with interactivity. It produces
 static text.
