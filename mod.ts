@@ -11,9 +11,9 @@
 
 */
 
-import { Colors } from "./deps.ts";
-import { renderMessagePrefix } from "./deps.ts";
-import { newStack, Stack } from "./stack.ts";
+import { bold, cyan, italic, yellow } from "std_fmt/colors";
+import { renderMessagePrefix } from "@aljoschameyer/loggingutils";
+import { newStack, type Stack } from "./stack.ts";
 
 /**
  * An expression, to be evaluated to a string.
@@ -254,10 +254,10 @@ export interface DebuggingInformation {
 export function styleDebuggingInformation(
   info: DebuggingInformation,
 ): string {
-  const name = Colors.bold(Colors.italic(info.name ?? "anonymous"));
+  const name = bold(italic(info.name ?? "anonymous"));
   const file = info.file ? ` in ${styleFile(info.file)}` : "";
   const position = info.file && info.line
-    ? Colors.yellow(`:${info.line}${info.column ? `:${info.column}` : ""}`)
+    ? yellow(`:${info.line}${info.column ? `:${info.column}` : ""}`)
     : "";
   return `${name}${file}${position}`;
 }
@@ -268,7 +268,7 @@ export function styleDebuggingInformation(
  * @returns The name with ansi escape sequences for styling.
  */
 export function styleFile(s: string): string {
-  return Colors.cyan(s);
+  return cyan(s);
 }
 
 /**

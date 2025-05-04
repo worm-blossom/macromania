@@ -12,7 +12,7 @@ Welcome to the Macromania tutorial. You can start reading this file without
 knowing anything about Macromania. The tutorial walks you through all the
 features of Macromania. It also happens to double as a test suite.
 */
-import { assertEquals } from "../devDeps.ts";
+import { assertEquals } from "@std/assert";
 
 ///////////////////
 // 1. The Basics //
@@ -22,7 +22,7 @@ import { assertEquals } from "../devDeps.ts";
 Macromania defines a type `Expression`. You give Macromania an `Expression`, and
 it expands the expression into a string.
 */
-import { Context, Expression } from "../mod.ts";
+import { Context, type Expression } from "../mod.ts";
 
 /*
 The most basic expression is a string, which evaluates to itself:
@@ -495,7 +495,7 @@ the typechecker start complaining because of the way that jsx gets compiled.
 
 Use the `Expressions` type and the `expressions` function to work around it.
 */
-import { Expressions, expressions } from "../mod.ts";
+import { type Expressions, expressions } from "../mod.ts";
 
 Deno.test("many children", async () => {
   function Many({ children }: { children?: Expressions }): Expression {
@@ -523,7 +523,7 @@ the `<exps />` intrinsic has you covered:
 
 Deno.test("exps", async () => {
   function ExpsDemo({ children }: { children?: Expressions }): Expression {
-    return <exps x={children} />
+    return <exps x={children} />;
   }
 
   const ctx1 = new Context();
@@ -547,7 +547,7 @@ Deno.test("exps", async () => {
 The `evaluate` method of `Context` is asynchronous. The functions of any impure, lifecycle or map expression can be asynchronous and everything still works!
 */
 
-import { encodeHex } from "../devDeps.ts";
+import { encodeHex } from "@std/encoding";
 Deno.test("async map", async () => {
   function Sha256({ children }: { children: Expression }): Expression {
     return (
