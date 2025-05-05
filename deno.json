@@ -4,7 +4,11 @@
 
   "name": "@wormblossom/macromania",
   "version": "1.0.1",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./jsx-runtime": "./mod.ts",
+    "./jsx-dev-runtime": "./mod.ts"
+  },
 
   "imports": {
     "@aljoschameyer/loggingutils": "jsr:@aljoscha-meyer/logging-utils@^1.0.0",
