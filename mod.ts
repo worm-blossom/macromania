@@ -11,9 +11,14 @@
 
 */
 
-import { bold, cyan, italic, yellow } from "std_fmt/colors";
-import { renderMessagePrefix } from "@aljoschameyer/loggingutils";
+import {
+  type LoggingBackend,
+  LoggingFormatter,
+  type LogLevel,
+} from "./loggingBackend.ts";
 import { newStack, type Stack } from "./stack.ts";
+import { DefaultLogger } from "./defaultLogger.ts";
+import { LogLevelStacks } from "./logLevelStacks.ts";
 
 /**
  * An expression, to be evaluated to a string.
@@ -243,73 +248,23 @@ export interface DebuggingInformation {
    * {@linkcode Expression}.
    */
   name?: string;
-}
-
-/**
- * Style {@linkcode DebuggingInformation} for terminal output.
- * @param info The {@linkcode DebuggingInformation} to style
- * @returns The {@linkcode DebuggingInformation}, converted to a string with
- * pretty ansi escapes.
- */
-export function styleDebuggingInformation(
-  info: DebuggingInformation,
-): string {
-  const name = bold(italic(info.name ?? "anonymous"));
-  const file = info.file ? ` in ${styleFile(info.file)}` : "";
-  const position = info.file && info.line
-    ? yellow(`:${info.line}${info.column ? `:${info.column}` : ""}`)
-    : "";
-  return `${name}${file}${position}`;
-}
-
-/**
- * Style a filename for terminal output.
- * @param s The name to style.
- * @returns The name with ansi escape sequences for styling.
- */
-export function styleFile(s: string): string {
-  return cyan(s);
+  /**
+   * The function (macro) itself that created the annotated
+   * {@linkcode Expression}.
+   */
+  // deno-lint-ignore no-explicit-any
+  macroFun?: (props: any) => Expression;
 }
 
 /**
  * Shared state during an evaluation that can be freely used by macros.
  *
- * The itention is for macro authors to keep the symbols they use private, and
+ * The intention is for macro authors to keep the symbols they use private, and
  * to export strongly typed functions for interacting with their parts of the
  * state instead. See {@linkcode createSubstate}.
  */
 // deno-lint-ignore no-explicit-any
-export type State = Map<symbol, any>;
-
-/**
- * Create a getter and a setter for a unique, statically typed portion of the
- * {@linkcode State} of a {@linkcode Context}.
- * @param name Name of the substate, for debugging purposes only.
- * @param initial A function that produces the initial state.
- * @returns A getter and a setter for the substate.
- */
-export function createSubstate<S>(
-  initial: () => S,
-): [(ctx: Context) => S, (ctx: Context, newState: S) => void] {
-  const key = Symbol();
-
-  const get = (ctx: Context) => {
-    const got = ctx.getState().get(key);
-
-    if (got === undefined) {
-      ctx.getState().set(key, initial());
-      return ctx.getState().get(key)!;
-    } else {
-      return got;
-    }
-  };
-
-  const set = (ctx: Context, newState: S) => {
-    ctx.getState().set(key, newState);
-  };
-
-  return [get, set];
-}
+type State = Map<symbol, any>;
 
 // Throwing the following symbol immediately terminates evaluation. This value
 // is not exposed, it is an implementation detail of `Context.halt()`.
@@ -321,14 +276,6 @@ const haltEvaluation = Symbol("Halt Evaluation");
 // by other macros do not pollute debugging information; they stay
 // implementation details.
 let currentlyEvaluating = false;
-
-/**
- * The (deliberately simple) interface we require for the logging backend.
- */
-export interface LoggingTarget {
-  // deno-lint-ignore no-explicit-any
-  log: (...data: any[]) => void;
-}
 
 /**
  * The state that is threaded through an evaluation process.
@@ -349,27 +296,64 @@ export class Context {
   private madeProgressThisRound: boolean;
   // The Context provides several methods for logging. This field provides the
   // backend for the logging methods.
-  private loggingBackend: LoggingTarget;
+  /**
+   * Do not use this field, it is an implementation detail. For logging, use the `debug`, `trace`, `info`, `warn`, `error`, and `loggingGroup` methods on {@linkcode Context} instead. For formatting, use the `loggingFormatter` field of {@linkcode Context}.
+   */
+  readonly loggingBackend: LoggingBackend;
+  // Starts as `false`, switches to `true` when a warning or error is logged.
+  private warnedOrWorseYet: boolean;
+  // The stack of logging levels that users can configure with the `loggingLevel` intrinsic.
+  /**
+   * Do not use this field. Typescript makes it impossible to encapsulate it, but this is an implementation detail that must not be touched.
+   */
+  readonly logLevelStacks: LogLevelStacks;
+  /**
+   * Methods for styling strings (text colour, background colour, italics, bold, underline, strikethrough) for logging. Also provides methods for styling file paths and {@linkcode DebuggingInformation} the same way as macromania does in the builtin logging.
+   */
+  readonly loggingFormatter: LoggingFormatter;
 
   /**
    * Create a new `Context`, logging to the given `LoggingTarget`.
-   * @param loggingBackend The {@linkcode LoggingTarget} to use. Defaults to the global console.
+   * @param loggingBackend The {@linkcode LoggingBackend} to use. Defaults to the global console.
    */
-  constructor(loggingBackend?: LoggingTarget) {
+  constructor(loggingBackend?: LoggingBackend) {
     this.state = new Map();
     this.stack = newStack();
     this.haveToMakeProgress = false;
     this.round = 0;
     this.madeProgressThisRound = false;
-    this.loggingBackend = loggingBackend ??
-      console /*the global typescript one*/;
+    this.loggingBackend = loggingBackend ?? new DefaultLogger();
+    this.warnedOrWorseYet = false;
+    this.logLevelStacks = new LogLevelStacks();
+    this.loggingFormatter = new LoggingFormatter(this.loggingBackend);
   }
 
   /**
-   * @returns The {@linkcode State} for this evaluation.
+   * Create a getter and a setter for a unique, statically typed state, tracked by a {@linkcode Context}.
+   * @param initial A function that produces the initial state.
+   * @returns A getter and a setter for the state.
    */
-  public getState(): State {
-    return this.state;
+  static createState<S>(
+    initial: () => S,
+  ): [(ctx: Context) => S, (ctx: Context, newState: S) => void] {
+    const key = Symbol();
+
+    const get = (ctx: Context) => {
+      const got = ctx.state.get(key);
+
+      if (got === undefined) {
+        ctx.state.set(key, initial());
+        return ctx.state.get(key)!;
+      } else {
+        return got;
+      }
+    };
+
+    const set = (ctx: Context, newState: S) => {
+      ctx.state.set(key, newState);
+    };
+
+    return [get, set];
   }
 
   /**
@@ -410,11 +394,126 @@ export class Context {
   }
 
   /**
-   * Log a message.
+   * @returns Whether a warning or an error has been logged with this `Context`.
+   */
+  public didWarnOrError(): boolean {
+    return this.warnedOrWorseYet;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  private log(level: LogLevel, ...data: any[]) {
+    if (level === "warn" || level === "error") {
+      this.warnedOrWorseYet = true;
+    }
+
+    const tos = this.stack.peek();
+    if (
+      this.logLevelStacks.shouldLog(
+        level,
+        tos === undefined ? undefined : tos.macroFun,
+      )
+    ) {
+      this.loggingBackend.log(level, ...data);
+    }
+  }
+
+  /**
+   * Log a message at {@linkcode LogLevel} `"debug"`.
    */
   // deno-lint-ignore no-explicit-any
-  public log(...data: any[]): void {
-    this.loggingBackend.log(...data);
+  public debug(...data: any[]): void {
+    this.log("debug", ...data);
+  }
+
+  /**
+   * Log a message at {@linkcode LogLevel} `"trace"`.
+   */
+  // deno-lint-ignore no-explicit-any
+  public trace(...data: any[]): void {
+    this.log("trace", ...data);
+  }
+
+  /**
+   * Log a message at {@linkcode LogLevel} `"info"`.
+   */
+  // deno-lint-ignore no-explicit-any
+  public info(...data: any[]): void {
+    this.log("info", ...data);
+  }
+
+  /**
+   * Log a message at {@linkcode LogLevel} `"warn"`.
+   */
+  // deno-lint-ignore no-explicit-any
+  public warn(...data: any[]): void {
+    this.log("warn", ...data);
+  }
+
+  /**
+   * Log a message at {@linkcode LogLevel} `"error"`.
+   */
+  // deno-lint-ignore no-explicit-any
+  public error(...data: any[]): void {
+    this.log("error", ...data);
+  }
+
+  /**
+   * Log the current macro call at logging level `"debug"`.
+   */
+  currentDebug() {
+    const tos = this.stack.peek();
+    if (tos !== undefined) {
+      this.debug(this.loggingFormatter.styleDebuggingInformation(tos));
+    }
+  }
+
+  /**
+   * Log the current macro call at logging level `"trace"`.
+   */
+  currentTrace() {
+    const tos = this.stack.peek();
+    if (tos !== undefined) {
+      this.trace(this.loggingFormatter.styleDebuggingInformation(tos));
+    }
+  }
+
+  /**
+   * Log the current macro call at logging level `"info"`.
+   */
+  currentInfo() {
+    const tos = this.stack.peek();
+    if (tos !== undefined) {
+      this.info(this.loggingFormatter.styleDebuggingInformation(tos));
+    }
+  }
+
+  /**
+   * Log the current macro call at logging level `"warn"`.
+   */
+  currentWarn() {
+    const tos = this.stack.peek();
+    if (tos !== undefined) {
+      this.warn(this.loggingFormatter.styleDebuggingInformation(tos));
+    }
+  }
+
+  /**
+   * Log the current macro call at logging level `"error"`.
+   */
+  currentError() {
+    const tos = this.stack.peek();
+    if (tos !== undefined) {
+      this.error(this.loggingFormatter.styleDebuggingInformation(tos));
+    }
+  }
+
+  /**
+   * Executes the given `thunk`. All logging happening inside will be visually grouped together.
+   */
+  loggingGroup(thunk: () => void) {
+    this.loggingBackend.startGroup();
+    thunk();
+    this.loggingBackend.endGroup();
   }
 
   /**
@@ -441,12 +540,16 @@ export class Context {
   }
 
   /**
-   * Print a stacktrace to the console.
+   * Log a stacktrace.
    */
-  public printStack() {
+  public printStack(logLevel: LogLevel = "error") {
     let s = this.stack;
     while (!s.isEmpty()) {
-      this.loggingBackend.log("  at", styleDebuggingInformation(s.peek()!));
+      this.log(
+        logLevel,
+        "  at",
+        this.loggingFormatter.styleDebuggingInformation(s.peek()!),
+      );
       s = s.pop();
     }
   }
@@ -600,40 +703,42 @@ export class Context {
   // Terminate execution and give a helpful error message.
   // deno-lint-ignore no-explicit-any
   private printNonExp(x: any): Expression {
-    this.log(
-      renderMessagePrefix("error", 0),
+    this.error(
       `Tried to evaluate a javascript value that was no macromania expression.`,
     );
-    this.log(
-      renderMessagePrefix("error", 1),
-      `Did you put {someJavascript} into a jsx element that evaluated to a non-expression?`,
+    this.error(
+      `Did you put ${
+        this.loggingFormatter.code(`{someJavascript}`)
+      } into a jsx element that evaluated to a non-expression?`,
     );
-    this.log(
-      renderMessagePrefix("error", 1),
+    this.error(
       `Evaluation cannot recover, but here are the value, its json representation, and a macro stacktrace for you to find and fix the mistake.`,
     );
-    this.log();
-    this.log(
-      renderMessagePrefix("error", 1),
-      `The offending value, as passed to console.log():`,
+    this.error(``);
+    this.error(`The offending value, as passed to the logger directly:`);
+    this.loggingBackend.startGroup();
+    this.error(x);
+    this.loggingBackend.endGroup();
+    this.error(``);
+    this.error(
+      `The offending value, as mapped through ${
+        this.loggingFormatter.code(`JSON.stringify(val)`)
+      }:`,
     );
-    this.log(x);
-    this.log();
-    this.log(
-      renderMessagePrefix("error", 1),
-      `The offending value, as passed to JSON.stringify():`,
-    );
-    this.log(JSON.stringify(x));
-    this.log();
-    this.log(
-      renderMessagePrefix("error", 1),
-      `The stack of macro invocations leading to this predicament:`,
-    );
+    this.loggingBackend.startGroup();
+    this.error(JSON.stringify(x));
+    this.loggingBackend.endGroup();
+    this.error(``);
+    this.error(`The stack of macro invocations leading to this predicament:`);
     return this.halt();
   }
 
   private logBlockingExpressions(exp: Expression) {
     // Prepare for logging, then call a recursive subroutine to do the actual work.
+    this.error(
+      `Had to abort evaluation because no unevaluated expression could made any progress.`,
+    );
+    this.error(`The following macro invocations did not terminate:`);
     this.doLogBlockingExpressions(exp, {});
   }
 
@@ -648,7 +753,8 @@ export class Context {
         this.doLogBlockingExpressions(inner, info);
       }
     } else if (expIsImpure(exp)) {
-      this.loggingBackend.log("  ", styleDebuggingInformation(info));
+      this.error(``);
+      this.error(this.loggingFormatter.styleDebuggingInformation(info));
     } else if (expIsPreprocess(exp)) {
       this.doLogBlockingExpressions(exp.preprocess.exp, info);
     } else if (expIsPostprocess(exp)) {
@@ -736,7 +842,15 @@ type MacromaniaIntrinsic =
   | "concurrent"
   | "lifecycle"
   | "halt"
-  | "exps";
+  | "exps"
+  | "loggingLevel"
+  | "debug"
+  | "trace"
+  | "info"
+  | "warn"
+  | "error"
+  | "loggingGroup"
+  | "sequential";
 
 type PropsOmnomnom = { children?: Expressions };
 
@@ -802,6 +916,71 @@ type PropsExps = {
   x?: Expressions;
 };
 
+type PropsLoggingLevel = {
+  /**
+   * The logging level to set.
+   */
+  level: LogLevel;
+  /**
+   * Whether to set the level for any specific macro, or globally.
+   */
+  // deno-lint-ignore no-explicit-any
+  macro?: (props: any) => Expression;
+  /**
+   * The expressions to evaluate using the new logging level.
+   */
+  children: Expressions;
+};
+
+type PropsDebug = {
+  /**
+   * The expressions to evaluate to a string and to then log at logging level `"debug"`.
+   */
+  children?: Expressions;
+};
+
+type PropsTrace = {
+  /**
+   * The expressions to evaluate to a string and to then log at logging level `"trace"`.
+   */
+  children?: Expressions;
+};
+
+type PropsInfo = {
+  /**
+   * The expressions to evaluate to a string and to then log at logging level `"info"`.
+   */
+  children?: Expressions;
+};
+
+type PropsWarn = {
+  /**
+   * The expressions to evaluate to a string and to then log at logging level `"warn"`.
+   */
+  children?: Expressions;
+};
+
+type PropsError = {
+  /**
+   * The expressions to evaluate to a string and to then log at logging level `"error"`.
+   */
+  children?: Expressions;
+};
+
+type PropsLoggingGroup = {
+  /**
+   * The expressions to evaluate. Any logging inside this intrinsic will be grouped together.
+   */
+  children?: Expressions;
+};
+
+type PropsSequential = {
+  /**
+   * The expressions to evaluated sequentially.
+   */
+  x: Expression[];
+};
+
 export declare namespace JSX {
   // All jsx evaluates to a number.
   // https://devblogs.microsoft.com/typescript/announcing-typescript-5-1-beta/#decoupled-type-checking-between-jsx-elements-and-jsx-tag-types
@@ -850,6 +1029,43 @@ export declare namespace JSX {
      * Convert some `Expressions` into a single expression.
      */
     exps: PropsExps;
+    /**
+     * Evaluate the children and log the resulting string at logging level `"debug"`.
+     * This intrinsic itself evaluates to the empty string.
+     */
+    debug: PropsDebug;
+    /**
+     * Evaluate the children and log the resulting string at logging level `"trace"`.
+     * This intrinsic itself evaluates to the empty string.
+     */
+    trace: PropsTrace;
+    /**
+     * Evaluate the children and log the resulting string at logging level `"info"`.
+     * This intrinsic itself evaluates to the empty string.
+     */
+    info: PropsInfo;
+    /**
+     * Evaluate the children and log the resulting string at logging level `"warn"`.
+     * This intrinsic itself evaluates to the empty string.
+     */
+    warn: PropsWarn;
+    /**
+     * Evaluate the children and log the resulting string at logging level `"error"`.
+     * This intrinsic itself evaluates to the empty string.
+     */
+    error: PropsError;
+    /**
+     * Evaluate the children. All logging that happens inside this intrinsic is visually grouped (typically by indentation).
+     */
+    loggingGroup: PropsLoggingGroup;
+    /**
+     * Sets the logging level for its children.
+     */
+    loggingLevel: PropsLoggingLevel;
+    /**
+     * Fully evaluates each expression before moving on to the next.
+     */
+    sequential: PropsSequential;
   }
 
   interface ElementAttributesProperty {
@@ -873,12 +1089,15 @@ interface JsxSource {
 function jsxSourceToDebuggingInformation(
   name: string,
   src: JsxSource,
+  // deno-lint-ignore no-explicit-any
+  macroFun?: (props: any) => Expression,
 ): DebuggingInformation {
   return {
     file: src.fileName,
     line: src.lineNumber,
     column: src.columnNumber,
     name,
+    macroFun,
   };
 }
 
@@ -907,6 +1126,7 @@ export function jsxDEV(
     ? jsxSourceToDebuggingInformation(
       typeof macro === "string" ? macro : macro.name,
       source,
+      typeof macro === "string" ? undefined : macro,
     )
     : undefined;
 
@@ -921,6 +1141,101 @@ export function jsxDEV(
     return maybeWrapWithInfo({
       impure: (ctx) => ctx.halt(),
     }, info);
+  } else if (macro === "loggingLevel") {
+    return maybeWrapWithInfo({
+      preprocess: {
+        exp: {
+          postprocess: {
+            exp: { fragment: expressions(props.children) },
+            fun: (ctx) => ctx.logLevelStacks.popLevel(props.macro),
+          },
+        },
+        fun: (ctx) => ctx.logLevelStacks.pushLevel(props.level, props.macro),
+      },
+    }, info);
+  } else if (macro === "debug") {
+    return maybeWrapWithInfo({
+      map: {
+        exp: { fragment: expressions(props.children) },
+        fun: (evaled: string, ctx: Context) => {
+          ctx.debug(evaled);
+          return "";
+        },
+      },
+    }, info);
+  } else if (macro === "trace") {
+    return maybeWrapWithInfo({
+      map: {
+        exp: { fragment: expressions(props.children) },
+        fun: (evaled: string, ctx: Context) => {
+          ctx.trace(evaled);
+          return "";
+        },
+      },
+    }, info);
+  } else if (macro === "info") {
+    return maybeWrapWithInfo({
+      map: {
+        exp: { fragment: expressions(props.children) },
+        fun: (evaled: string, ctx: Context) => {
+          ctx.info(evaled);
+          return "";
+        },
+      },
+    }, info);
+  } else if (macro === "warn") {
+    return maybeWrapWithInfo({
+      map: {
+        exp: { fragment: expressions(props.children) },
+        fun: (evaled: string, ctx: Context) => {
+          ctx.warn(evaled);
+          return "";
+        },
+      },
+    }, info);
+  } else if (macro === "error") {
+    return maybeWrapWithInfo({
+      map: {
+        exp: { fragment: expressions(props.children) },
+        fun: (evaled: string, ctx: Context) => {
+          ctx.error(evaled);
+          return "";
+        },
+      },
+    }, info);
+  } else if (macro === "loggingGroup") {
+    return maybeWrapWithInfo({
+      preprocess: {
+        exp: {
+          postprocess: {
+            exp: { fragment: expressions(props.children) },
+            fun: (ctx) => ctx.loggingBackend.endGroup(),
+          },
+        },
+        fun: (ctx) => ctx.loggingBackend.startGroup(),
+      },
+    }, info);
+  } else if (macro === "sequential") {
+    let exp: Expression = "";
+
+    if (props.x.length === 0) {
+      // Do nothing.
+    } else if (props.x.length === 1) {
+      exp = props.x[0];
+    } else if (props.x.length >= 2) {
+      const [fst, ...rest] = props.x;
+
+      exp = {
+        map: {
+          exp: fst,
+          fun: (evaled: string, _ctx: Context) => ({
+            fragment: [evaled, ...rest],
+          }),
+        },
+      };
+    }
+
+    return maybeWrapWithInfo(exp, info);
   } else if (macro === "fragment") {
     return maybeWrapWithInfo({ fragment: props.exps }, info);
   } else if (macro === "impure") {
@@ -979,3 +1294,5 @@ export function Fragment(
     return { fragment: [children] };
   }
 }
+
+// TODO logging intrinsics

@@ -178,11 +178,11 @@ As a first demonstration, we define a simple counter macro that evaluates to an
 incrementing number each time.
 */
 
-import { createSubstate } from "../mod.ts";
-
 Deno.test("counter macro", async () => {
   // Create a getter and a setter for some macro-specific state.
-  const [getCount, setCount] = createSubstate<number /* type of the state*/>(
+  const [getCount, setCount] = Context.createState<
+    number /* type of the state*/
+  >(
     () => 0, // function producing the initial state
   );
 
@@ -224,7 +224,7 @@ is an example where we build a simple system of definitions and references:
 Deno.test("defs and refs", async () => {
   // Create a getter and a setter for our state: a mapping from short ids to
   // links.
-  const [getDefs, _setDefs] = createSubstate<Map<string, string>>(
+  const [getDefs, _setDefs] = Context.createState<Map<string, string>>(
     () => new Map(), // the initial state
   );
 
@@ -245,7 +245,7 @@ Deno.test("defs and refs", async () => {
       if (link) {
         return `<a href="${link}">${name}</a>`;
       } else {
-        ctx.log(`Undefined name ${name}.`);
+        ctx.error(`Undefined name ${name}.`);
         ctx.halt();
         return "";
       }
@@ -340,7 +340,7 @@ Deno.test("defs and refs", async () => {
         return `<a href="${link}">${name}</a>`;
       } else {
         if (ctx.mustMakeProgress()) {
-          ctx.log("Unknown name: ", name);
+          ctx.warn("Unknown name: ", name);
           return "[unknown name]";
         } else {
           return null;
@@ -373,7 +373,7 @@ automatically uses the correkt markup for headings.
 */
 // Create a getter and a setter for section depth.
 Deno.test("nested markdown sections", async () => {
-  const [getDepth, setDepth] = createSubstate<number>(() => 0);
+  const [getDepth, setDepth] = Context.createState<number>(() => 0);
 
   // Render the markup for a heading.
   function AutoHeading(
@@ -393,10 +393,8 @@ Deno.test("nested markdown sections", async () => {
     const post = (ctx: Context) => setDepth(ctx, getDepth(ctx) - 1);
     return (
       <lifecycle pre={pre} post={post}>
-        <>
-          <AutoHeading>{title}</AutoHeading>
-          {children}
-        </>
+        <AutoHeading>{title}</AutoHeading>
+        {children}
       </lifecycle>
     );
   }
