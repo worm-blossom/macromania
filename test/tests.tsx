@@ -662,3 +662,57 @@ Deno.test("lifecycle", async () => {
     assertEquals(got, "abc");
   })();
 });
+
+Deno.test("sequential", async () => {
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<sequential x={[]} />);
+    assertEquals(got, "");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<sequential x={["foo"]} />);
+    assertEquals(got, "foo");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    const got = await ctx.evaluate(<sequential x={["foo", "bar", "baz"]} />);
+    assertEquals(got, "foobarbaz");
+  })();
+
+  await (async () => {
+    const ctx = new Context();
+    let first = "a";
+
+    const got = await ctx.evaluate(
+      <sequential
+        x={[
+          <impure
+            fun={async (ctx) => {
+              await delay(40);
+              first = "b";
+              return "b";
+            }}
+          />,
+          <impure
+            fun={async (ctx) => {
+              first = "c";
+              await delay(20);
+              return "c";
+            }}
+          />,
+          <impure
+            fun={(ctx) => {
+              first = "d";
+              return "d";
+            }}
+          />,
+        ]}
+      />,
+    );
+    assertEquals(got, "bcd");
+    assertEquals(first, "d");
+  })();
+});
