@@ -11,10 +11,10 @@
 
 */
 
-import {
-  type LoggingBackend,
+import type {
+  LoggingBackend,
   LoggingFormatter,
-  type LogLevel,
+  LogLevel,
 } from "./loggingBackend.ts";
 import { newStack, type Stack } from "./stack.ts";
 import { DefaultLogger } from "./defaultLogger.ts";
@@ -227,6 +227,12 @@ function canBeEvaluatedOneStep(x: any): boolean {
 }
 
 /**
+ * A macro, mapping arbitrary props to an expression.
+ */
+// deno-lint-ignore no-explicit-any
+export type Macro = (props: any) => Expression;
+
+/**
  * Debugging information that can be attached to {@linkcode Expression}s via
  * {@linkcode StacktracingExpression}s.
  */
@@ -252,8 +258,7 @@ export interface DebuggingInformation {
    * The function (macro) itself that created the annotated
    * {@linkcode Expression}.
    */
-  // deno-lint-ignore no-explicit-any
-  macroFun?: (props: any) => Expression;
+  macroFun?: Macro;
 }
 
 /**
@@ -294,12 +299,6 @@ export class Context {
   // evaluation round, we track whether at least one impure expression returned
   // non-null in the current round.
   private madeProgressThisRound: boolean;
-  // The Context provides several methods for logging. This field provides the
-  // backend for the logging methods.
-  /**
-   * Do not use this field, it is an implementation detail. For logging, use the `debug`, `trace`, `info`, `warn`, `error`, and `loggingGroup` methods on {@linkcode Context} instead. For formatting, use the `loggingFormatter` field of {@linkcode Context}.
-   */
-  readonly loggingBackend: LoggingBackend;
   // Starts as `false`, switches to `true` when a warning or error is logged.
   private warnedOrWorseYet: boolean;
   // The stack of logging levels that users can configure with the `loggingLevel` intrinsic.
@@ -308,24 +307,24 @@ export class Context {
    */
   readonly logLevelStacks: LogLevelStacks;
   /**
-   * Methods for styling strings (text colour, background colour, italics, bold, underline, strikethrough) for logging. Also provides methods for styling file paths and {@linkcode DebuggingInformation} the same way as macromania does in the builtin logging.
+   * Methods for styling strings (text colour, background colour, italics, bold, underline, strikethrough) for logging.
    */
-  readonly loggingFormatter: LoggingFormatter;
+  // This is also always the `LoggingBackend` we use. But we don't want to expose that functionality externally, so we omit the type from the public interface and typecast when we use it as a `LoggingBackend` internally.
+  readonly fmt: LoggingFormatter;
 
   /**
    * Create a new `Context`, logging to the given `LoggingTarget`.
-   * @param loggingBackend The {@linkcode LoggingBackend} to use. Defaults to the global console.
+   * @param logger The {@linkcode LoggingBackend} and {@linkcode LoggingFormatter} to use. Defaults to the global console with ansii escape sequences.
    */
-  constructor(loggingBackend?: LoggingBackend) {
+  constructor(logger?: LoggingBackend & LoggingFormatter) {
     this.state = new Map();
     this.stack = newStack();
     this.haveToMakeProgress = false;
     this.round = 0;
     this.madeProgressThisRound = false;
-    this.loggingBackend = loggingBackend ?? new DefaultLogger();
+    this.fmt = logger ?? new DefaultLogger();
     this.warnedOrWorseYet = false;
     this.logLevelStacks = new LogLevelStacks();
-    this.loggingFormatter = new LoggingFormatter(this.loggingBackend);
   }
 
   /**
@@ -413,7 +412,7 @@ export class Context {
         tos === undefined ? undefined : tos.macroFun,
       )
     ) {
-      this.loggingBackend.log(level, ...data);
+      (<LoggingBackend> <unknown> this.fmt).log(level, ...data);
     }
   }
 
@@ -463,7 +462,7 @@ export class Context {
   currentDebug() {
     const tos = this.stack.peek();
     if (tos !== undefined) {
-      this.debug(this.loggingFormatter.styleDebuggingInformation(tos));
+      this.debug(this.fmtDebuggingInformation(tos));
     }
   }
 
@@ -473,7 +472,7 @@ export class Context {
   currentTrace() {
     const tos = this.stack.peek();
     if (tos !== undefined) {
-      this.trace(this.loggingFormatter.styleDebuggingInformation(tos));
+      this.trace(this.fmtDebuggingInformation(tos));
     }
   }
 
@@ -483,7 +482,7 @@ export class Context {
   currentInfo() {
     const tos = this.stack.peek();
     if (tos !== undefined) {
-      this.info(this.loggingFormatter.styleDebuggingInformation(tos));
+      this.info(this.fmtDebuggingInformation(tos));
     }
   }
 
@@ -493,7 +492,7 @@ export class Context {
   currentWarn() {
     const tos = this.stack.peek();
     if (tos !== undefined) {
-      this.warn(this.loggingFormatter.styleDebuggingInformation(tos));
+      this.warn(this.fmtDebuggingInformation(tos));
     }
   }
 
@@ -503,7 +502,7 @@ export class Context {
   currentError() {
     const tos = this.stack.peek();
     if (tos !== undefined) {
-      this.error(this.loggingFormatter.styleDebuggingInformation(tos));
+      this.error(this.fmtDebuggingInformation(tos));
     }
   }
 
@@ -511,9 +510,9 @@ export class Context {
    * Executes the given `thunk`. All logging happening inside will be visually grouped together.
    */
   loggingGroup(thunk: () => void) {
-    this.loggingBackend.startGroup();
+    (<LoggingBackend> <unknown> this.fmt).startGroup();
     thunk();
-    this.loggingBackend.endGroup();
+    (<LoggingBackend> <unknown> this.fmt).endGroup();
   }
 
   /**
@@ -540,6 +539,34 @@ export class Context {
   }
 
   /**
+   * Style some {@linkcode DebuggingInformation} for logging.
+   */
+  fmtDebuggingInformation(
+    info: DebuggingInformation,
+  ): string {
+    const name = this.fmt.bold(this.fmt.italic(info.name ?? "anonymous"));
+    const file = info.file ? ` in ${this.fmtFilePath(info.file)}` : "";
+    const position = info.file && info.line
+      ? this.fmt.yellow(`:${info.line}${info.column ? `:${info.column}` : ""}`)
+      : "";
+    return `${name}${file}${position}`;
+  }
+
+  /**
+   * Style a file path the same way that macromania styles file paths for logging.
+   */
+  fmtFilePath(path: string): string {
+    return this.fmt.cyan(path);
+  }
+
+  /**
+   * Style a code snipped the same way that macromania styles code snippets for logging.
+   */
+  fmtCode(s: string): string {
+    return this.fmt.yellow(s);
+  }
+
+  /**
    * Log a stacktrace.
    */
   public printStack(logLevel: LogLevel = "error") {
@@ -548,7 +575,7 @@ export class Context {
       this.log(
         logLevel,
         "  at",
-        this.loggingFormatter.styleDebuggingInformation(s.peek()!),
+        this.fmtDebuggingInformation(s.peek()!),
       );
       s = s.pop();
     }
@@ -708,7 +735,7 @@ export class Context {
     );
     this.error(
       `Did you put ${
-        this.loggingFormatter.code(`{someJavascript}`)
+        this.fmtCode(`{someJavascript}`)
       } into a jsx element that evaluated to a non-expression?`,
     );
     this.error(
@@ -716,18 +743,18 @@ export class Context {
     );
     this.error(``);
     this.error(`The offending value, as passed to the logger directly:`);
-    this.loggingBackend.startGroup();
+    (<LoggingBackend> <unknown> this.fmt).startGroup();
     this.error(x);
-    this.loggingBackend.endGroup();
+    (<LoggingBackend> <unknown> this.fmt).endGroup();
     this.error(``);
     this.error(
       `The offending value, as mapped through ${
-        this.loggingFormatter.code(`JSON.stringify(val)`)
+        this.fmtCode(`JSON.stringify(val)`)
       }:`,
     );
-    this.loggingBackend.startGroup();
+    (<LoggingBackend> <unknown> this.fmt).startGroup();
     this.error(JSON.stringify(x));
-    this.loggingBackend.endGroup();
+    (<LoggingBackend> <unknown> this.fmt).endGroup();
     this.error(``);
     this.error(`The stack of macro invocations leading to this predicament:`);
     return this.halt();
@@ -754,7 +781,7 @@ export class Context {
       }
     } else if (expIsImpure(exp)) {
       this.error(``);
-      this.error(this.loggingFormatter.styleDebuggingInformation(info));
+      this.error(this.fmtDebuggingInformation(info));
     } else if (expIsPreprocess(exp)) {
       this.doLogBlockingExpressions(exp.preprocess.exp, info);
     } else if (expIsPostprocess(exp)) {
@@ -924,8 +951,7 @@ type PropsLoggingLevel = {
   /**
    * Whether to set the level for any specific macro, or globally.
    */
-  // deno-lint-ignore no-explicit-any
-  macro?: (props: any) => Expression;
+  macro?: Macro;
   /**
    * The expressions to evaluate using the new logging level.
    */
@@ -1089,8 +1115,7 @@ interface JsxSource {
 function jsxSourceToDebuggingInformation(
   name: string,
   src: JsxSource,
-  // deno-lint-ignore no-explicit-any
-  macroFun?: (props: any) => Expression,
+  macroFun?: Macro,
 ): DebuggingInformation {
   return {
     file: src.fileName,
@@ -1112,8 +1137,7 @@ let macroDepth = 0;
 // https://www.typescriptlang.org/tsconfig#jsx
 // https://babeljs.io/docs/babel-plugin-transform-react-jsx-development
 export function jsxDEV(
-  // deno-lint-ignore no-explicit-any
-  macro: MacromaniaIntrinsic | ((props: any) => Expression),
+  macro: MacromaniaIntrinsic | Macro,
   // deno-lint-ignore no-explicit-any
   props: any,
   _key: undefined,
@@ -1209,10 +1233,10 @@ export function jsxDEV(
         exp: {
           postprocess: {
             exp: { fragment: expressions(props.children) },
-            fun: (ctx) => ctx.loggingBackend.endGroup(),
+            fun: (ctx) => (<LoggingBackend> <unknown> ctx.fmt).endGroup(),
           },
         },
-        fun: (ctx) => ctx.loggingBackend.startGroup(),
+        fun: (ctx) => (<LoggingBackend> <unknown> ctx.fmt).startGroup(),
       },
     }, info);
   } else if (macro === "sequential") {
