@@ -40,7 +40,6 @@ export type Expression =
   | ImpureExpression
   | LifecycleExpression
   | MapExpression
-  | ConcurrentExpression
   | MacroExpression;
 
 /**
@@ -85,15 +84,6 @@ type MapExpression = {
       | ((evaluated: string, ctx: Context) => Expression)
       | ((evaluated: string, ctx: Context) => Promise<Expression>);
   };
-  dbg: DebuggingInformation;
-};
-
-/**
- * Evaluate macros concurrently and concatenate the results in the order in
- * which the macros were supplied.
- */
-type ConcurrentExpression = {
-  concurrent: Expression[];
   dbg: DebuggingInformation;
 };
 
@@ -143,13 +133,6 @@ function mapExp(
   };
 }
 
-function concurrentExp(
-  exps: Expression[],
-  dbg: DebuggingInformation,
-): Expression {
-  return { concurrent: exps, dbg };
-}
-
 function macroExp(
   exp: Expression,
   dbg: DebuggingInformation,
@@ -179,12 +162,6 @@ function expIsMap(
   exp: Expression,
 ): exp is MapExpression {
   return (typeof exp !== "string") && ("map" in exp);
-}
-
-function expIsConcurrent(
-  exp: Expression,
-): exp is ConcurrentExpression {
-  return (typeof exp !== "string") && ("concurrent" in exp);
 }
 
 function expIsMacro(
@@ -239,10 +216,6 @@ function canBeEvaluatedOneStep(x: any): boolean {
         return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
           Object.hasOwn(inner, "exp") && hasDbg(x);
       }
-    } else if (Object.hasOwn(x, "concurrent")) {
-      // We might have a concurrent expression.
-      // Check if the inner value is an array.
-      return Array.isArray(x.concurrent) && hasDbg(x);
     } else if (Object.hasOwn(x, "macro")) {
       return hasDbg(x);
     } else {
@@ -625,25 +598,6 @@ export class Context {
     }
   }
 
-  // Create an independent copy of this Context, so that multiple expressions can be evaluated concurrently on multple such copies. The copies can be merged back into their origin context via `this.mergeClones()`.
-  private clone(): Context {
-    // private state: State;
-    // private stack: Stack<DebuggingInformation>;
-    // private etp: EvaluationTreePositionImpl;
-    // private haveToMakeProgress: boolean;
-    // private round: number;
-    // private madeProgressThisRound: boolean;
-    // private warnedOrWorseYet: boolean;
-    // readonly logLevelStacks: LogLevelStacks;
-    // readonly fmt: LoggingFormatter;
-    
-    throw "TODO";
-  }
-
-  private mergeClones(clones: Context[]) {
-    throw "TODO";
-  }
-
   // Attempt to evaluate a single Expression.
   private async doEvaluate(exp: Expression): Promise<Expression> {
     if (!canBeEvaluatedOneStep(exp)) {
@@ -717,28 +671,6 @@ export class Context {
         } else {
           exp.map.exp = evaluated;
           ret = exp;
-        }
-      } else if (expIsConcurrent(exp)) {
-        // Evaluate all subexpressions concurrently.
-
-        const ctxs = exp.concurrent.map((_, i) => {
-          const ctx = this.clone();
-          ctx.etp = this.etp.appendChild({ indexInParent: i, dbg: {} });
-          return ctx;
-        });
-
-        const allEvaluated = await Promise.all(
-          exp.concurrent.map((inner, i) => ctxs[i].doEvaluate(inner)),
-        );
-
-        this.mergeClones(ctxs);
-
-        const compressed = simplifyExpressionsArray(allEvaluated);
-
-        if (Array.isArray(compressed)) {
-          ret = { concurrent: compressed, dbg: exp.dbg };
-        } else {
-          ret = compressed;
         }
       } else if (expIsMacro(exp)) {
         const oldEtp = this.etp;
@@ -879,10 +811,6 @@ export class Context {
       this.doLogBlockingExpressions(exp.lifecycle.exp, info);
     } else if (expIsMap(exp)) {
       this.doLogBlockingExpressions(exp.map.exp, info);
-    } else if (expIsConcurrent(exp)) {
-      for (const inner of exp.concurrent) {
-        this.doLogBlockingExpressions(inner, info);
-      }
     }
   }
 }
@@ -890,27 +818,6 @@ export class Context {
 function simplifyExpressionsArray(
   exps: Expression[],
 ): string | Expression | Expression[] {
-  // const compressed: Expression[] = [];
-
-  // // Join adjacent strings.
-  // let previousEvaluatedToString = false;
-  // for (const innerEvaluated of exps) {
-  //   if (typeof innerEvaluated === "string") {
-  //     if (previousEvaluatedToString) {
-  //       compressed[compressed.length - 1] =
-  //         (<string> compressed[compressed.length - 1]).concat(
-  //           innerEvaluated,
-  //         );
-  //     } else {
-  //       previousEvaluatedToString = true;
-  //       compressed.push(innerEvaluated);
-  //     }
-  //   } else {
-  //     compressed.push(innerEvaluated);
-  //     previousEvaluatedToString = false;
-  //   }
-  // }
-
   // Simplify the array of evaluated expressions if possible,
   // otherwise return it directly.
   if (exps.length === 0) {
@@ -956,7 +863,6 @@ type MacromaniaIntrinsic =
   | "omnomnom"
   | "impure"
   | "map"
-  | "concurrent"
   | "lifecycle"
   | "halt"
   | "exps"
@@ -1004,14 +910,6 @@ type PropsLifecycle = {
   children?: Expressions;
   pre?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
   post?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
-};
-
-type PropsConcurrent = {
-  /**
-   * The expressions to form the contents of the created
-   * {@linkcode ConcurrentExpression}.
-   */
-  children: Expressions;
 };
 
 type PropsOmnomnom = { children?: Expressions };
@@ -1116,10 +1014,6 @@ export declare namespace JSX {
      * expressions.
      */
     lifecycle: PropsLifecycle;
-    /**
-     * Evaluate an array of expressions concurrently, and concatenate the results.
-     */
-    concurrent: PropsConcurrent;
     /**
      * Evaluate the child expressions for their side-efects.
      * Evaluates to the empty string.
@@ -1247,8 +1141,6 @@ export function jsxDEV(
       props.post ?? ((_) => {}),
       dbg,
     );
-  } else if (macro === "concurrent") {
-    return concurrentExp(expressions(props.children), dbg);
   } else if (macro === "exps") {
     return fragmentExp(expressions(props.x), dbg);
   } else if (macro === "omnomnom") {

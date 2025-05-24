@@ -482,7 +482,7 @@ the typechecker start complaining because of the way that jsx gets compiled.
 
 Use the `Expressions` type and the `expressions` function to work around it.
 */
-import { type Expressions } from "../mod.ts";
+import type { Expressions } from "../mod.ts";
 
 Deno.test("many children", async () => {
   function Many({ children }: { children?: Expressions }): Expression {
@@ -604,45 +604,6 @@ Deno.test("sequential async fragments", async () => {
   );
   assertEquals(got, "123");
   // Takes 150 milliseconds to evaluate.
-});
-
-/*
-To evaluate macros concurrently (but still concatenate the resuls in the order
-in which the macros were given), use the `<concurrent>` intrinsic:
-*/
-
-Deno.test("concurrent macros", async () => {
-  const ctx = new Context();
-  let counter = 0;
-  // The only change to the previous example that we use `<concurrent>` instead
-  // of `<>`
-  const got = await ctx.evaluate(
-    <concurrent>
-      <impure
-        fun={async (ctx) => {
-          await sleep(1); // really fast
-          counter += 1;
-          return `${counter}`;
-        }}
-      />
-      <impure
-        fun={async (ctx) => {
-          await sleep(99); // really slow
-          counter += 1;
-          return `${counter}`;
-        }}
-      />
-      <impure
-        fun={async (ctx) => {
-          await sleep(50); // in between
-          counter += 1;
-          return `${counter}`;
-        }}
-      />
-    </concurrent>,
-  );
-  assertEquals(got, "132");
-  // Takes 99 milliseconds to evaluate.
 });
 
 /*
