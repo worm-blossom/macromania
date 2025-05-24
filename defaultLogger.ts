@@ -1,4 +1,4 @@
-import type { LogLevel } from "./loggingBackend.ts";
+import type { LoggingFormatter, LogLevel } from "./loggingBackend.ts";
 import {
   bgBlack,
   bgBlue,
@@ -44,7 +44,7 @@ import type { LoggingBackend } from "./loggingBackend.ts";
 /**
  * The default logger used by macromania logs to the console.
  */
-export class DefaultLogger implements LoggingBackend {
+export class DefaultLogger implements LoggingBackend, LoggingFormatter {
   constructor() {}
 
   // deno-lint-ignore no-explicit-any

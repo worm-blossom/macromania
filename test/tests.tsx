@@ -11,16 +11,13 @@ import {
   expressions,
 } from "../mod.ts";
 import { newStack, type Stack } from "../stack.ts";
-import { DefaultLogger } from "../defaultLogger.ts";
-import { LoggingFormatter } from "../loggingBackend.ts";
 
 function assertStack(s_: Stack<DebuggingInformation>, expected: string[]) {
-  const formatter = new LoggingFormatter(new DefaultLogger());
   function report() {
     console.log(expected);
     let s__ = s_;
     while (!s__.isEmpty()) {
-      console.log("at", formatter.styleDebuggingInformation(s__.peek()!));
+      console.log("at", s__.peek()!);
       s__ = s__.pop();
     }
   }
@@ -148,7 +145,7 @@ Deno.test("stack 3", async () => {
   function Internal({ children }: { children: Expression }): Expression {
     return (
       <impure
-        fun={(ctx: Context) => {
+        fun={(_: Context) => {
           return children;
         }}
       />

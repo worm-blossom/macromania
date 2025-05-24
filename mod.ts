@@ -34,17 +34,16 @@ export type Expression =
   | string
   | FragmentExpression
   | ImpureExpression
-  | PreprocessExpression
-  | PostprocessExpression
+  | LifecycleExpression
   | MapExpression
   | ConcurrentExpression
-  | DebugExpression;
+  | MacroExpression;
 
 /**
  * A fragment consists of an array of expressions. They are evaulated in
  * sequence and the results are concatenated.
  */
-type FragmentExpression = { fragment: Expression[] };
+type FragmentExpression = { fragment: Expression[]; dbg: DebuggingInformation };
 
 /**
  * An impure expression maps the evaluation {@linkcode Context} to another
@@ -56,28 +55,19 @@ type ImpureExpression = {
   impure:
     | ((ctx: Context) => Expression | null)
     | ((ctx: Context) => Promise<Expression | null>);
+  dbg: DebuggingInformation;
 };
 
 /**
- * Call a function for its side-effects before attempting to evaluate a
- * wrapped expression.
+ * Call functions for their side-effects before and after attempting evaluate a wrapped expression.
  */
-type PreprocessExpression = {
-  preprocess: {
+type LifecycleExpression = {
+  lifecycle: {
     exp: Expression;
-    fun: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
+    pre: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
+    post: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
   };
-};
-
-/**
- * Call a function for its side-effects after attempting to evaluate a
- * wrapped expression.
- */
-type PostprocessExpression = {
-  postprocess: {
-    exp: Expression;
-    fun: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
-  };
+  dbg: DebuggingInformation;
 };
 
 /**
@@ -91,24 +81,77 @@ type MapExpression = {
       | ((evaluated: string, ctx: Context) => Expression)
       | ((evaluated: string, ctx: Context) => Promise<Expression>);
   };
+  dbg: DebuggingInformation;
 };
 
 /**
  * Evaluate macros concurrently and concatenate the results in the order in
  * which the macros were supplied.
  */
-type ConcurrentExpression = { concurrent: Expression[] };
+type ConcurrentExpression = {
+  concurrent: Expression[];
+  dbg: DebuggingInformation;
+};
 
 /**
- * Attach debugging information to an expression. This makes the expression
- * appear in stack traces in case of failed evaluation.
+ * Attaches metadata to the expression returned by each macro evaluation.
  */
-type DebugExpression = {
-  debug: {
-    exp: Expression;
-    info: DebuggingInformation;
-  };
+type MacroExpression = {
+  macro: Expression;
+  dbg: DebuggingInformation;
 };
+
+function fragmentExp(
+  exps: Expression[],
+  dbg: DebuggingInformation,
+): Expression {
+  return { fragment: exps, dbg };
+}
+
+function impureExp(
+  fun:
+    | ((ctx: Context) => Expression | null)
+    | ((ctx: Context) => Promise<Expression | null>),
+  dbg: DebuggingInformation,
+): Expression {
+  return { impure: fun, dbg };
+}
+
+function lifecycleExp(
+  exp: Expression,
+  pre: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>),
+  post: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>),
+  dbg: DebuggingInformation,
+): Expression {
+  return { lifecycle: { exp, pre, post }, dbg };
+}
+
+function mapExp(
+  exp: Expression,
+  fun:
+    | ((evaluated: string, ctx: Context) => Expression)
+    | ((evaluated: string, ctx: Context) => Promise<Expression>),
+  dbg: DebuggingInformation,
+): Expression {
+  return {
+    map: { exp, fun },
+    dbg,
+  };
+}
+
+function concurrentExp(
+  exps: Expression[],
+  dbg: DebuggingInformation,
+): Expression {
+  return { concurrent: exps, dbg };
+}
+
+function macroExp(
+  exp: Expression,
+  dbg: DebuggingInformation,
+): Expression {
+  return { macro: exp, dbg };
+}
 
 function expIsFragment(
   exp: Expression,
@@ -122,16 +165,10 @@ function expIsImpure(
   return (typeof exp !== "string") && ("impure" in exp);
 }
 
-function expIsPreprocess(
+function expIsLifecycle(
   exp: Expression,
-): exp is PreprocessExpression {
-  return (typeof exp !== "string") && ("preprocess" in exp);
-}
-
-function expIsPostprocess(
-  exp: Expression,
-): exp is PostprocessExpression {
-  return (typeof exp !== "string") && ("postprocess" in exp);
+): exp is LifecycleExpression {
+  return (typeof exp !== "string") && ("lifecycle" in exp);
 }
 
 function expIsMap(
@@ -146,10 +183,15 @@ function expIsConcurrent(
   return (typeof exp !== "string") && ("concurrent" in exp);
 }
 
-function expIsDebug(
+function expIsMacro(
   exp: Expression,
-): exp is DebugExpression {
-  return (typeof exp !== "string") && ("debug" in exp);
+): exp is MacroExpression {
+  return (typeof exp !== "string") && ("macro" in exp);
+}
+
+// deno-lint-ignore no-explicit-any
+function hasDbg(x: any): boolean {
+  return Object.hasOwn(x, "dbg") && typeof x.dbg === "object";
 }
 
 /**
@@ -167,30 +209,21 @@ function canBeEvaluatedOneStep(x: any): boolean {
     if (Object.hasOwn(x, "fragment")) {
       // We might have a fragment expression.
       // Check if the inner value is an array.
-      return Array.isArray(x.fragment);
+      return Array.isArray(x.fragment) && hasDbg(x);
     } else if (Object.hasOwn(x, "impure")) {
       // We might have an impure expression.
       // Check if the inner value is a function.
-      return typeof x.impure === "function";
-    } else if (Object.hasOwn(x, "preprocess")) {
+      return typeof x.impure === "function" && hasDbg(x);
+    } else if (Object.hasOwn(x, "lifecycle")) {
       // We might have a preprocess expression.
-      const inner = x.preprocess;
+      const inner = x.lifecycle;
       if (typeof inner !== "object") {
         return false;
       } else {
         // Check if it has a `fun` function and an `exp` property.
-        return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
-          Object.hasOwn(inner, "exp");
-      }
-    } else if (Object.hasOwn(x, "postprocess")) {
-      // We might have a postprocess expression.
-      const inner = x.postprocess;
-      if (typeof inner !== "object") {
-        return false;
-      } else {
-        // Check if it has a `fun` function and an `exp` property.
-        return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
-          Object.hasOwn(inner, "exp");
+        return Object.hasOwn(inner, "pre") && typeof inner.pre === "function" &&
+          Object.hasOwn(inner, "post") && typeof inner.post === "function" &&
+          Object.hasOwn(inner, "exp") && hasDbg(x);
       }
     } else if (Object.hasOwn(x, "map")) {
       // We might have a map expression.
@@ -200,22 +233,14 @@ function canBeEvaluatedOneStep(x: any): boolean {
       } else {
         // Check if it has a `fun` function and an `exp` property.
         return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
-          Object.hasOwn(inner, "exp");
+          Object.hasOwn(inner, "exp") && hasDbg(x);
       }
     } else if (Object.hasOwn(x, "concurrent")) {
       // We might have a concurrent expression.
       // Check if the inner value is an array.
-      return Array.isArray(x.concurrent);
-    } else if (Object.hasOwn(x, "debug")) {
-      // We might have a debug expression.
-      const inner = x.debug;
-      if (typeof inner !== "object") {
-        return false;
-      } else {
-        // Check if it has an `info` object and an `exp` property.
-        return Object.hasOwn(inner, "info") && typeof inner.info === "object" &&
-          Object.hasOwn(inner, "exp");
-      }
+      return Array.isArray(x.concurrent) && hasDbg(x);
+    } else if (Object.hasOwn(x, "macro")) {
+      return hasDbg(x);
     } else {
       // We have an object but no expression kind matches.
       return false;
@@ -233,10 +258,15 @@ function canBeEvaluatedOneStep(x: any): boolean {
 export type Macro = (props: any) => Expression;
 
 /**
- * Debugging information that can be attached to {@linkcode Expression}s via
- * {@linkcode StacktracingExpression}s.
+ * The debugging information that the jsx factory attaches to all non-string {@linkcode Expression}s.
  */
 export interface DebuggingInformation {
+  /**
+   * Set to true if the expression is a macro call written by the user, set to false for builtins and for macor calls which are part of other macros.
+   *
+   * Expressions appear in stack traces if and only if this is true.
+   */
+  isPrimary?: boolean;
   /**
    * The file in which the annotated {@linkcode Expression} was created.
    */
@@ -251,12 +281,12 @@ export interface DebuggingInformation {
   column?: number;
   /**
    * The name of the function (macro) that created the annotated
-   * {@linkcode Expression}.
+   * {@linkcode Expression}, or the name of the builtin.
    */
   name?: string;
   /**
    * The function (macro) itself that created the annotated
-   * {@linkcode Expression}.
+   * {@linkcode Expression}. Undefiend for builtins.
    */
   macroFun?: Macro;
 }
@@ -516,7 +546,7 @@ export class Context {
   }
 
   /**
-   * Return whether evaluation has been given up because no progress could
+   * Returns whether evaluation has been given up because no progress could
    * be made.
    */
   public didGiveUp(): boolean {
@@ -524,7 +554,7 @@ export class Context {
   }
 
   /**
-   * Print a stacktrace, then immediately and faultily terminate evaluation.
+   * Prints a stacktrace, then immediately and faultily terminates evaluation.
    *
    * @returns A dummy Expression so you can write `return ctx.halt()` in
    * impure or map functions. This function always throws, it never
@@ -539,7 +569,7 @@ export class Context {
   }
 
   /**
-   * Style some {@linkcode DebuggingInformation} for logging.
+   * Styles some {@linkcode DebuggingInformation} for logging.
    */
   fmtDebuggingInformation(
     info: DebuggingInformation,
@@ -553,21 +583,21 @@ export class Context {
   }
 
   /**
-   * Style a file path the same way that macromania styles file paths for logging.
+   * Styles a file path the same way that macromania styles file paths for logging.
    */
   fmtFilePath(path: string): string {
     return this.fmt.cyan(path);
   }
 
   /**
-   * Style a code snipped the same way that macromania styles code snippets for logging.
+   * Styles a code snipped the same way that macromania styles code snippets for logging.
    */
   fmtCode(s: string): string {
     return this.fmt.yellow(s);
   }
 
   /**
-   * Log a stacktrace.
+   * Logs a stacktrace.
    */
   public printStack(logLevel: LogLevel = "error") {
     let s = this.stack;
@@ -584,91 +614,98 @@ export class Context {
   // Attempt to evaluate a single Expression.
   private async doEvaluate(exp: Expression): Promise<Expression> {
     if (!canBeEvaluatedOneStep(exp)) {
-      this.printNonExp(exp);
+      return this.printNonExp(exp);
     }
 
     if (typeof exp === "string") {
       return exp;
-    } else if (expIsFragment(exp)) {
-      // Evaluate arrays by successively evaluating their items.
-      const allEvaluated: Expression[] = [];
-
-      for (const inner of exp.fragment) {
-        allEvaluated.push(await this.doEvaluate(inner));
-      }
-
-      // Join together adjacent strings to prevent unncecessarily iterating
-      // over them separately in future evaluation rounds.
-      const compressed = compressExpressions(allEvaluated);
-
-      if (Array.isArray(compressed)) {
-        return { fragment: compressed };
-      } else {
-        return compressed;
-      }
-    } else if (expIsImpure(exp)) {
-      const unthunk = await exp.impure(this);
-      if (unthunk === null) {
-        return exp; // Try again next evaluation round.
-      } else {
-        this.madeProgressThisRound = true;
-        return this.doEvaluate(unthunk);
-      }
-    } else if (expIsPreprocess(exp)) {
-      await exp.preprocess.fun(this);
-
-      const evaluated = await this.doEvaluate(exp.preprocess.exp);
-      if (typeof evaluated === "string") {
-        return evaluated;
-      } else {
-        exp.preprocess.exp = evaluated;
-        return exp;
-      }
-    } else if (expIsPostprocess(exp)) {
-      const evaluated = await this.doEvaluate(exp.postprocess.exp);
-      await exp.postprocess.fun(this);
-
-      if (typeof evaluated === "string") {
-        return evaluated;
-      } else {
-        exp.postprocess.exp = evaluated;
-        return exp;
-      }
-    } else if (expIsMap(exp)) {
-      const evaluated = await this.doEvaluate(exp.map.exp);
-
-      if (typeof evaluated === "string") {
-        const mapped = await exp.map.fun(evaluated, this);
-        return this.doEvaluate(mapped);
-      } else {
-        exp.map.exp = evaluated;
-        return exp;
-      }
-    } else if (expIsConcurrent(exp)) {
-      // Evaluate all subexpressions concurrently.
-      const allEvaluated = await Promise.all(
-        exp.concurrent.map((inner) => this.doEvaluate(inner)),
-      );
-
-      const compressed = compressExpressions(allEvaluated);
-
-      if (Array.isArray(compressed)) {
-        return { concurrent: compressed };
-      } else {
-        return compressed;
-      }
-    } else if (expIsDebug(exp)) {
-      this.stack = this.stack.push(exp.debug.info);
-      const evaluated = await this.doEvaluate(exp.debug.exp);
-      this.stack = this.stack.pop();
-      if (typeof evaluated === "string") {
-        return evaluated;
-      } else {
-        exp.debug.exp = evaluated;
-        return exp;
-      }
     } else {
-      return this.printNonExp(exp);
+      // Next up: we do some debugging data management, then evaluate the expression and write the result to `ret`, then do more debugging data management, and finally return `ret`.
+      let ret: Expression | Promise<Expression>;
+
+      // Push debug info.
+
+      if (exp.dbg.isPrimary) {
+        this.stack = this.stack.push(exp.dbg);
+      }
+
+      if (expIsFragment(exp)) {
+        // Evaluate fragments by successively evaluating their items.
+        const allEvaluated: Expression[] = [];
+
+        for (const inner of exp.fragment) {
+          allEvaluated.push(await this.doEvaluate(inner));
+        }
+
+        // Join together adjacent strings to prevent unncecessarily iterating
+        // over them separately in future evaluation rounds.
+        const compressed = compressExpressions(allEvaluated);
+
+        if (Array.isArray(compressed)) {
+          ret = { fragment: compressed, dbg: exp.dbg };
+        } else {
+          ret = compressed;
+        }
+      } else if (expIsImpure(exp)) {
+        const unthunk = await exp.impure(this);
+        if (unthunk === null) {
+          ret = exp; // Try again next evaluation round.
+        } else {
+          this.madeProgressThisRound = true;
+          ret = this.doEvaluate(unthunk);
+        }
+      } else if (expIsLifecycle(exp)) {
+        await exp.lifecycle.pre(this);
+        const evaluated = await this.doEvaluate(exp.lifecycle.exp);
+        await exp.lifecycle.post(this);
+
+        if (typeof evaluated === "string") {
+          ret = evaluated;
+        } else {
+          exp.lifecycle.exp = evaluated;
+          ret = exp;
+        }
+      } else if (expIsMap(exp)) {
+        const evaluated = await this.doEvaluate(exp.map.exp);
+
+        if (typeof evaluated === "string") {
+          const mapped = await exp.map.fun(evaluated, this);
+          ret = this.doEvaluate(mapped);
+        } else {
+          exp.map.exp = evaluated;
+          ret = exp;
+        }
+      } else if (expIsConcurrent(exp)) {
+        // Evaluate all subexpressions concurrently.
+        const allEvaluated = await Promise.all(
+          exp.concurrent.map((inner) => this.doEvaluate(inner)),
+        );
+
+        const compressed = compressExpressions(allEvaluated);
+
+        if (Array.isArray(compressed)) {
+          ret = { concurrent: compressed, dbg: exp.dbg };
+        } else {
+          ret = compressed;
+        }
+      } else if (expIsMacro(exp)) {
+        const evaled = await this.doEvaluate(exp.macro);
+        if (typeof evaled === "string") {
+          ret = evaled;
+        } else {
+          ret = exp;
+        }
+        // ret = await this.doEvaluate(exp.macro);
+      } else {
+        return this.printNonExp(exp);
+      }
+
+      // Pop debug info.
+      if (exp.dbg.isPrimary) {
+        this.stack = this.stack.pop();
+      }
+
+      return ret;
     }
   }
 
@@ -782,18 +819,14 @@ export class Context {
     } else if (expIsImpure(exp)) {
       this.error(``);
       this.error(this.fmtDebuggingInformation(info));
-    } else if (expIsPreprocess(exp)) {
-      this.doLogBlockingExpressions(exp.preprocess.exp, info);
-    } else if (expIsPostprocess(exp)) {
-      this.doLogBlockingExpressions(exp.postprocess.exp, info);
+    } else if (expIsLifecycle(exp)) {
+      this.doLogBlockingExpressions(exp.lifecycle.exp, info);
     } else if (expIsMap(exp)) {
       this.doLogBlockingExpressions(exp.map.exp, info);
     } else if (expIsConcurrent(exp)) {
       for (const inner of exp.concurrent) {
         this.doLogBlockingExpressions(inner, info);
       }
-    } else if (expIsDebug(exp)) {
-      this.doLogBlockingExpressions(exp.debug.exp, exp.debug.info);
     }
   }
 }
@@ -1112,6 +1145,12 @@ interface JsxSource {
   columnNumber: number;
 }
 
+// Track how many macros are currently on the js callstack.
+// This is not concerned with evaluation-time invocation of
+// functions on expressions, but with turning user input into
+// the initial expression to evaluate.
+let macroDepth = 0;
+
 function jsxSourceToDebuggingInformation(
   name: string,
   src: JsxSource,
@@ -1123,14 +1162,12 @@ function jsxSourceToDebuggingInformation(
     column: src.columnNumber,
     name,
     macroFun,
+    // If macroDepth > 0, then we are dealing with an expression that was not
+    // supplied by the user, but which is an implementation detail of a macro,
+    // and should hence not show up in stacktraces.
+    isPrimary: !(currentlyEvaluating || macroDepth > 0),
   };
 }
-
-// Track how many macros are currently on the js callstack.
-// This is not concerned with evaluation-time invocation of
-// functions on expressions, but with turning user input into
-// the initial expression to evaluate.
-let macroDepth = 0;
 
 // jsxFactory for the ASCP, to be used with jsx-transform `react-jsxdev`
 // https://www.typescriptlang.org/tsconfig#jsxFactory
@@ -1146,99 +1183,77 @@ export function jsxDEV(
   // deno-lint-ignore no-explicit-any
   _self: any,
 ): Expression {
-  const info = source
+  const dbg = source
     ? jsxSourceToDebuggingInformation(
       typeof macro === "string" ? macro : macro.name,
       source,
       typeof macro === "string" ? undefined : macro,
     )
-    : undefined;
+    : {};
 
-  if (macro === "omnomnom") {
-    return maybeWrapWithInfo({
-      map: {
-        exp: { fragment: expressions(props.children) },
-        fun: (_: string, _ctx: Context) => "",
-      },
-    }, info);
+  if (macro === "fragment") {
+    return fragmentExp(props.exps, dbg);
+  } else if (macro === "impure") {
+    return impureExp(props.fun, dbg);
+  } else if (macro === "map") {
+    return mapExp(fragmentExp(expressions(props.children), {}), props.fun, dbg);
+  } else if (macro === "lifecycle") {
+    return lifecycleExp(
+      fragmentExp(expressions(props.children), {}),
+      props.pre ?? ((_) => {}),
+      props.post ?? ((_) => {}),
+      dbg,
+    );
+  } else if (macro === "concurrent") {
+    return concurrentExp(expressions(props.children), dbg);
+  } else if (macro === "exps") {
+    return fragmentExp(expressions(props.x), dbg);
+  } else if (macro === "omnomnom") {
+    return mapExp(fragmentExp(expressions(props.children), {}), () => "", dbg);
   } else if (macro === "halt") {
-    return maybeWrapWithInfo({
-      impure: (ctx) => ctx.halt(),
-    }, info);
+    return impureExp((ctx) => ctx.halt(), dbg);
   } else if (macro === "loggingLevel") {
-    return maybeWrapWithInfo({
-      preprocess: {
-        exp: {
-          postprocess: {
-            exp: { fragment: expressions(props.children) },
-            fun: (ctx) => ctx.logLevelStacks.popLevel(props.macro),
-          },
-        },
-        fun: (ctx) => ctx.logLevelStacks.pushLevel(props.level, props.macro),
+    return lifecycleExp(
+      fragmentExp(expressions(props.children), {}),
+      (ctx) => ctx.logLevelStacks.pushLevel(props.level, props.macro),
+      (ctx) => ctx.logLevelStacks.popLevel(props.macro),
+      dbg,
+    );
+  } else if (
+    macro === "debug" || macro === "trace" || macro === "info" ||
+    macro === "warn" || macro === "error"
+  ) {
+    return mapExp(
+      fragmentExp(expressions(props.children), {}),
+      (evaled, ctx) => {
+        switch (macro) {
+          case "debug":
+            ctx.debug(evaled);
+            break;
+          case "trace":
+            ctx.trace(evaled);
+            break;
+          case "info":
+            ctx.info(evaled);
+            break;
+          case "warn":
+            ctx.warn(evaled);
+            break;
+          case "error":
+            ctx.error(evaled);
+            break;
+        }
+        return "";
       },
-    }, info);
-  } else if (macro === "debug") {
-    return maybeWrapWithInfo({
-      map: {
-        exp: { fragment: expressions(props.children) },
-        fun: (evaled: string, ctx: Context) => {
-          ctx.debug(evaled);
-          return "";
-        },
-      },
-    }, info);
-  } else if (macro === "trace") {
-    return maybeWrapWithInfo({
-      map: {
-        exp: { fragment: expressions(props.children) },
-        fun: (evaled: string, ctx: Context) => {
-          ctx.trace(evaled);
-          return "";
-        },
-      },
-    }, info);
-  } else if (macro === "info") {
-    return maybeWrapWithInfo({
-      map: {
-        exp: { fragment: expressions(props.children) },
-        fun: (evaled: string, ctx: Context) => {
-          ctx.info(evaled);
-          return "";
-        },
-      },
-    }, info);
-  } else if (macro === "warn") {
-    return maybeWrapWithInfo({
-      map: {
-        exp: { fragment: expressions(props.children) },
-        fun: (evaled: string, ctx: Context) => {
-          ctx.warn(evaled);
-          return "";
-        },
-      },
-    }, info);
-  } else if (macro === "error") {
-    return maybeWrapWithInfo({
-      map: {
-        exp: { fragment: expressions(props.children) },
-        fun: (evaled: string, ctx: Context) => {
-          ctx.error(evaled);
-          return "";
-        },
-      },
-    }, info);
+      dbg,
+    );
   } else if (macro === "loggingGroup") {
-    return maybeWrapWithInfo({
-      preprocess: {
-        exp: {
-          postprocess: {
-            exp: { fragment: expressions(props.children) },
-            fun: (ctx) => (<LoggingBackend> <unknown> ctx.fmt).endGroup(),
-          },
-        },
-        fun: (ctx) => (<LoggingBackend> <unknown> ctx.fmt).startGroup(),
-      },
-    }, info);
+    return lifecycleExp(
+      fragmentExp(expressions(props.children), {}),
+      (ctx) => (<LoggingBackend> <unknown> ctx.fmt).startGroup(),
+      (ctx) => (<LoggingBackend> <unknown> ctx.fmt).endGroup(),
+      dbg,
+    );
   } else if (macro === "sequential") {
     let exp: Expression = "";
 
@@ -1249,61 +1264,23 @@ export function jsxDEV(
     } else if (props.x.length >= 2) {
       const [fst, ...rest] = props.x;
 
-      exp = {
-        map: {
-          exp: fst,
-          fun: (evaled: string, _ctx: Context) => ({
-            fragment: [evaled, ...rest],
-          }),
-        },
-      };
+      exp = mapExp(fst, (evaled, _) => fragmentExp([evaled, ...rest], {}), dbg);
     }
 
-    return maybeWrapWithInfo(exp, info);
-  } else if (macro === "fragment") {
-    return maybeWrapWithInfo({ fragment: props.exps }, info);
-  } else if (macro === "impure") {
-    return maybeWrapWithInfo({ impure: props.fun }, info);
-  } else if (macro === "map") {
-    return maybeWrapWithInfo({
-      map: { exp: { fragment: expressions(props.children) }, fun: props.fun },
-    }, info);
-  } else if (macro === "lifecycle") {
-    return maybeWrapWithInfo({
-      preprocess: {
-        exp: {
-          postprocess: {
-            exp: { fragment: expressions(props.children) },
-            fun: props.post ?? ((_) => {}),
-          },
-        },
-        fun: props.pre ?? ((_) => {}),
-      },
-    }, info);
-  } else if (macro === "concurrent") {
-    return maybeWrapWithInfo({ concurrent: expressions(props.children) }, info);
-  } else if (macro === "exps") {
-    return maybeWrapWithInfo({ fragment: expressions(props.x) }, info);
+    return exp;
   } else {
     macroDepth += 1;
     const exp = macro(props);
     macroDepth -= 1;
-    return maybeWrapWithInfo(exp, info);
-  }
-}
 
-function maybeWrapWithInfo(
-  exp: Expression,
-  info?: DebuggingInformation,
-): Expression {
-  // If macroDepth > 0, then we are dealing with an expression that was not
-  // supplied by the user, but which is an implementation detail of a macro,
-  // and should hence not show up in stacktraces.
-  // info is `undefined` for jsx fragments, which we wish to ignore anyways.
-  if (currentlyEvaluating || macroDepth > 0 || !info) {
-    return exp;
-  } else {
-    return { debug: { exp, info } };
+    return macroExp(exp, dbg);
+
+    // if (typeof exp === "string") {
+    //   return exp;
+    // } else {
+    //   exp.dbg = dbg;
+    //   return exp;
+    // }
   }
 }
 
@@ -1311,12 +1288,12 @@ export function Fragment(
   { children }: { children?: Expression | Expression[] },
 ): Expression {
   if (children === undefined) {
-    return { fragment: [] };
+    return fragmentExp([], {});
   } else if (Array.isArray(children)) {
-    return { fragment: children };
+    return fragmentExp(children, {});
   } else {
-    return { fragment: [children] };
+    return fragmentExp([children], {});
   }
 }
 
-// TODO logging intrinsics
+// TODO remove `fragment` intrinsic?

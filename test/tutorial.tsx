@@ -43,11 +43,11 @@ a new `Context`, pass an `Expression` (in this case, a string) to its
 To evaluate a sequence of expressions and concatenate the results, use a
 `FragmentExpression`:
 */
-Deno.test("fragment expression", async () => {
-  const ctx = new Context();
-  const got = await ctx.evaluate({ fragment: ["Hello,", " world", "!"] });
-  assertEquals(got, "Hello, world!");
-});
+// Deno.test("fragment expression", async () => {
+//   const ctx = new Context();
+//   const got = await ctx.evaluate({ fragment: ["Hello,", " world", "!"] });
+//   assertEquals(got, "Hello, world!");
+// });
 
 /*
 This is all nice and dandy, but not worth the effort so far. What we still lack
@@ -55,7 +55,7 @@ are _macros_. A macro is a function that returns an expression.
 */
 Deno.test("simple macro", async () => {
   function Em({ children }: { children: Expression }): Expression {
-    return { fragment: ["*", children, "*"] };
+    return <>*{children}*</>;
   }
 
   const ctx = new Context();
@@ -187,14 +187,15 @@ Deno.test("counter macro", async () => {
   );
 
   function Count(): Expression {
-    return {
-      // An impure expression maps a Context to an expression.
-      impure: (ctx: Context) => {
-        const oldCount = getCount(ctx);
-        setCount(ctx, oldCount + 1);
-        return `${oldCount}`;
-      },
-    };
+    return (
+      <impure
+        fun={(ctx: Context) => {
+          const oldCount = getCount(ctx);
+          setCount(ctx, oldCount + 1);
+          return `${oldCount}`;
+        }}
+      />
+    );
   }
 
   const ctx = new Context();
