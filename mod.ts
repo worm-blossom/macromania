@@ -19,6 +19,10 @@ import type {
 import { newStack, type Stack } from "./stack.ts";
 import { DefaultLogger } from "./defaultLogger.ts";
 import { LogLevelStacks } from "./logLevelStacks.ts";
+import {
+  EvaluationTreePosition,
+  EvaluationTreePositionImpl,
+} from "./evaluationTreePosition.ts";
 
 /**
  * An expression, to be evaluated to a string.
@@ -319,8 +323,10 @@ export class Context {
   // The shared mutable state.
   private state: State;
   // Like a callstack, but for the DebuggingInformation of
-  // debug expressions.
+  // user-invoked macros.
   private stack: Stack<DebuggingInformation>;
+  // Tracks the current position in the evaluation process.
+  private etp: EvaluationTreePositionImpl;
   // True when evaluation would halt if no impure expression returns non-null.
   private haveToMakeProgress: boolean;
   // Count the number of evaluation rounds.
@@ -349,6 +355,7 @@ export class Context {
   constructor(logger?: LoggingBackend & LoggingFormatter) {
     this.state = new Map();
     this.stack = newStack();
+    this.etp = new EvaluationTreePositionImpl();
     this.haveToMakeProgress = false;
     this.round = 0;
     this.madeProgressThisRound = false;
@@ -392,6 +399,13 @@ export class Context {
    */
   public getDebuggingStack(): Stack<DebuggingInformation> {
     return this.stack;
+  }
+
+  /**
+   * @returns The current {@linkcode EvaluationTreePosition}.
+   */
+  public getEvaluationTreePosition(): EvaluationTreePosition {
+    return this.etp;
   }
 
   /**
@@ -611,6 +625,25 @@ export class Context {
     }
   }
 
+  // Create an independent copy of this Context, so that multiple expressions can be evaluated concurrently on multple such copies. The copies can be merged back into their origin context via `this.mergeClones()`.
+  private clone(): Context {
+    // private state: State;
+    // private stack: Stack<DebuggingInformation>;
+    // private etp: EvaluationTreePositionImpl;
+    // private haveToMakeProgress: boolean;
+    // private round: number;
+    // private madeProgressThisRound: boolean;
+    // private warnedOrWorseYet: boolean;
+    // readonly logLevelStacks: LogLevelStacks;
+    // readonly fmt: LoggingFormatter;
+    
+    throw "TODO";
+  }
+
+  private mergeClones(clones: Context[]) {
+    throw "TODO";
+  }
+
   // Attempt to evaluate a single Expression.
   private async doEvaluate(exp: Expression): Promise<Expression> {
     if (!canBeEvaluatedOneStep(exp)) {
@@ -633,13 +666,18 @@ export class Context {
         // Evaluate fragments by successively evaluating their items.
         const allEvaluated: Expression[] = [];
 
-        for (const inner of exp.fragment) {
-          allEvaluated.push(await this.doEvaluate(inner));
+        const oldEtp = this.etp;
+        for (let i = 0; i < exp.fragment.length; i++) {
+          this.etp = oldEtp.appendChild({ indexInParent: i, dbg: {} });
+          allEvaluated.push(await this.doEvaluate(exp.fragment[i]));
+          this.etp = oldEtp;
         }
 
-        // Join together adjacent strings to prevent unncecessarily iterating
-        // over them separately in future evaluation rounds.
-        const compressed = compressExpressions(allEvaluated);
+        // for (const inner of exp.fragment) {
+        //   allEvaluated.push(await this.doEvaluate(inner));
+        // }
+
+        const compressed = simplifyExpressionsArray(allEvaluated);
 
         if (Array.isArray(compressed)) {
           ret = { fragment: compressed, dbg: exp.dbg };
@@ -666,22 +704,36 @@ export class Context {
           ret = exp;
         }
       } else if (expIsMap(exp)) {
+        // We want to create disjoin ETPs for the evaluation of the inner expression and the evaluation of the result of mapping. Hence, we pop an index of zero before the inner evaluation, and wrap the successfully mapped result at second position of a fragment expression.
+
+        const oldEtp = this.etp;
+        this.etp = oldEtp.appendChild({ indexInParent: 0, dbg: {} });
         const evaluated = await this.doEvaluate(exp.map.exp);
+        this.etp = oldEtp;
 
         if (typeof evaluated === "string") {
           const mapped = await exp.map.fun(evaluated, this);
-          ret = this.doEvaluate(mapped);
+          ret = this.doEvaluate(fragmentExp(["", mapped], {}));
         } else {
           exp.map.exp = evaluated;
           ret = exp;
         }
       } else if (expIsConcurrent(exp)) {
         // Evaluate all subexpressions concurrently.
+
+        const ctxs = exp.concurrent.map((_, i) => {
+          const ctx = this.clone();
+          ctx.etp = this.etp.appendChild({ indexInParent: i, dbg: {} });
+          return ctx;
+        });
+
         const allEvaluated = await Promise.all(
-          exp.concurrent.map((inner) => this.doEvaluate(inner)),
+          exp.concurrent.map((inner, i) => ctxs[i].doEvaluate(inner)),
         );
 
-        const compressed = compressExpressions(allEvaluated);
+        this.mergeClones(ctxs);
+
+        const compressed = simplifyExpressionsArray(allEvaluated);
 
         if (Array.isArray(compressed)) {
           ret = { concurrent: compressed, dbg: exp.dbg };
@@ -689,7 +741,11 @@ export class Context {
           ret = compressed;
         }
       } else if (expIsMacro(exp)) {
+        const oldEtp = this.etp;
+        this.etp = oldEtp.appendChild({ indexInParent: 0, dbg: {} });
         const evaled = await this.doEvaluate(exp.macro);
+        this.etp = oldEtp;
+
         if (typeof evaled === "string") {
           ret = evaled;
         } else {
@@ -831,38 +887,40 @@ export class Context {
   }
 }
 
-function compressExpressions(
+function simplifyExpressionsArray(
   exps: Expression[],
 ): string | Expression | Expression[] {
-  const compressed: Expression[] = [];
+  // const compressed: Expression[] = [];
 
-  // Join adjacent strings.
-  let previousEvaluatedToString = false;
-  for (const innerEvaluated of exps) {
-    if (typeof innerEvaluated === "string") {
-      if (previousEvaluatedToString) {
-        compressed[compressed.length - 1] =
-          (<string> compressed[compressed.length - 1]).concat(
-            innerEvaluated,
-          );
-      } else {
-        previousEvaluatedToString = true;
-        compressed.push(innerEvaluated);
-      }
-    } else {
-      compressed.push(innerEvaluated);
-      previousEvaluatedToString = false;
-    }
-  }
+  // // Join adjacent strings.
+  // let previousEvaluatedToString = false;
+  // for (const innerEvaluated of exps) {
+  //   if (typeof innerEvaluated === "string") {
+  //     if (previousEvaluatedToString) {
+  //       compressed[compressed.length - 1] =
+  //         (<string> compressed[compressed.length - 1]).concat(
+  //           innerEvaluated,
+  //         );
+  //     } else {
+  //       previousEvaluatedToString = true;
+  //       compressed.push(innerEvaluated);
+  //     }
+  //   } else {
+  //     compressed.push(innerEvaluated);
+  //     previousEvaluatedToString = false;
+  //   }
+  // }
 
-  // Further simplify the array of evaluated expressions if possible,
+  // Simplify the array of evaluated expressions if possible,
   // otherwise return it directly.
-  if (compressed.length === 0) {
+  if (exps.length === 0) {
     return "";
-  } else if (compressed.length === 1) {
-    return compressed[0];
+  } else if (exps.length === 1) {
+    return exps[0];
+  } else if (exps.every((exp) => typeof exp === "string")) {
+    return exps.join("");
   } else {
-    return compressed;
+    return exps;
   }
 }
 
@@ -1273,3 +1331,5 @@ export function Fragment(
     return fragmentExp([children], {});
   }
 }
+
+// TODO don't store DebugInformation with ETPs; a stack of indexes suffices.

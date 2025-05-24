@@ -1,7 +1,4 @@
-import type {
-  DebuggingInformation,
-  Macro,
-} from "macromaniajsx/jsx-dev-runtime";
+import type { DebuggingInformation } from "macromaniajsx/jsx-dev-runtime";
 import { newStack, type Stack } from "./stack.ts";
 
 export type EvaluationNodeInfo = {
@@ -20,7 +17,7 @@ export class EvaluationTreePosition {
   /**
    * Creates a new root {@linkcode EvaluationTreePosition}.
    */
-  constructor() {
+  protected constructor() {
     this.theDepth = 0;
     this.stack = newStack();
   }
@@ -56,21 +53,6 @@ export class EvaluationTreePosition {
       return undefined;
     } else {
       return tos.dbg;
-    }
-  }
-
-  /**
-   * Returns the EvaluationTreePosition of the parent, if there is one.
-   */
-  parent(): EvaluationTreePosition | undefined {
-    if (this.stack.isEmpty()) {
-      return undefined;
-    } else {
-      const popped = this.stack.pop();
-      const theParent = new EvaluationTreePosition();
-      theParent.theDepth = this.theDepth - 1;
-      theParent.stack = popped;
-      return theParent;
     }
   }
 
@@ -193,6 +175,10 @@ export class EvaluationTreePosition {
 }
 
 export class EvaluationTreePositionImpl extends EvaluationTreePosition {
+  constructor() {
+    super();
+  }
+
   appendChild(nodeInfo: EvaluationNodeInfo): EvaluationTreePositionImpl {
     const ret = new EvaluationTreePositionImpl();
     ret.theDepth = this.theDepth + 1;
@@ -204,10 +190,6 @@ export class EvaluationTreePositionImpl extends EvaluationTreePosition {
     other: EvaluationTreePosition,
   ): EvaluationTreePositionImpl {
     return <EvaluationTreePositionImpl> super.deepestCommonAncestor(other);
-  }
-
-  override parent(): EvaluationTreePositionImpl | undefined {
-    return <EvaluationTreePositionImpl> super.parent();
   }
 }
 
