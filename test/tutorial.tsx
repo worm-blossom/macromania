@@ -477,29 +477,22 @@ Deno.test("halt intrinsic", async () => {
 });
 
 /*
-The `<fragment>` intrinsic can be used to convert an array of Expressions into
-a FragmentExpression:
-*/
-Deno.test("fragment intrinsic", async () => {
-  const ctx = new Context();
-  const got = await ctx.evaluate(
-    <fragment exps={["a", "b", "c"]} />,
-  );
-  assertEquals(got, "abc");
-});
-
-/*
 If you want to define a macro that can operate on any number of children, then
 the typechecker start complaining because of the way that jsx gets compiled.
 
 Use the `Expressions` type and the `expressions` function to work around it.
 */
-import { type Expressions, expressions } from "../mod.ts";
+import { type Expressions } from "../mod.ts";
 
 Deno.test("many children", async () => {
   function Many({ children }: { children?: Expressions }): Expression {
-    const inner = expressions(children);
-    return `${inner.length}`;
+    if (children === undefined) {
+      return "0";
+    } else if (Array.isArray(children)) {
+      return `${children.length}`;
+    } else {
+      return "1";
+    }
   }
 
   const ctx1 = new Context();

@@ -878,7 +878,7 @@ export type Expressions = undefined | Expression | Expression[];
  * @param children Some {@linkcode Expressions} to convert.
  * @returns An array of {@linkcode Expression} containing all children.
  */
-export function expressions(children: Expressions): Expression[] {
+function expressions(children: Expressions): Expression[] {
   if (children === undefined) {
     return [];
   } else if (Array.isArray(children)) {
@@ -895,7 +895,6 @@ export function expressions(children: Expressions): Expression[] {
 // Intrinsic elements are those with a lowercase name, in React
 // those would be html elements.
 type MacromaniaIntrinsic =
-  | "fragment"
   | "omnomnom"
   | "impure"
   | "map"
@@ -911,16 +910,6 @@ type MacromaniaIntrinsic =
   | "error"
   | "loggingGroup"
   | "sequential";
-
-type PropsOmnomnom = { children?: Expressions };
-
-type PropsFragment = {
-  /**
-   * The expressions to form the contents of the created
-   * {@linkcode FragmentExpression}.
-   */
-  exps: Expression[];
-};
 
 type PropsImpure = {
   /**
@@ -966,6 +955,8 @@ type PropsConcurrent = {
    */
   children: Expressions;
 };
+
+type PropsOmnomnom = { children?: Expressions };
 
 type PropsHalt = Record<string | number | symbol, never>;
 
@@ -1053,15 +1044,6 @@ export declare namespace JSX {
   // https://www.typescriptlang.org/docs/handbook/jsx.html#attribute-type-checking
   interface IntrinsicElements {
     /**
-     * Evaluate the child expressions for their side-efects.
-     * Evaluates to the empty string.
-     */
-    omnomnom: PropsOmnomnom;
-    /**
-     * Evaluate an array of expressions and concatenate the results.
-     */
-    fragment: PropsFragment;
-    /**
      * Create an {@linkcode Expression} dependent on the current
      * {@linkcode Context}, and evaluate it.
      */
@@ -1080,6 +1062,11 @@ export declare namespace JSX {
      * Evaluate an array of expressions concurrently, and concatenate the results.
      */
     concurrent: PropsConcurrent;
+    /**
+     * Evaluate the child expressions for their side-efects.
+     * Evaluates to the empty string.
+     */
+    omnomnom: PropsOmnomnom;
     /**
      * Print a stacktrace and halt evaluation.
      */
@@ -1191,9 +1178,7 @@ export function jsxDEV(
     )
     : {};
 
-  if (macro === "fragment") {
-    return fragmentExp(props.exps, dbg);
-  } else if (macro === "impure") {
+  if (macro === "impure") {
     return impureExp(props.fun, dbg);
   } else if (macro === "map") {
     return mapExp(fragmentExp(expressions(props.children), {}), props.fun, dbg);
@@ -1274,13 +1259,6 @@ export function jsxDEV(
     macroDepth -= 1;
 
     return macroExp(exp, dbg);
-
-    // if (typeof exp === "string") {
-    //   return exp;
-    // } else {
-    //   exp.dbg = dbg;
-    //   return exp;
-    // }
   }
 }
 
@@ -1295,5 +1273,3 @@ export function Fragment(
     return fragmentExp([children], {});
   }
 }
-
-// TODO remove `fragment` intrinsic?
