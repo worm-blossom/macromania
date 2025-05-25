@@ -23,6 +23,7 @@ import {
   EvaluationTreePosition,
   EvaluationTreePositionImpl,
 } from "./evaluationTreePosition.ts";
+import { doCreateScopedState } from "./stateHelpers.tsx";
 
 /**
  * An expression, to be evaluated to a string.
@@ -363,6 +364,21 @@ export class Context {
     };
 
     return [get, set];
+  }
+
+  /**
+   * Create a getter and a setter for a scoped state. The returned scope macro crates a new scope, and the getter and setter interact with independent states within each scope.
+   * @param initial A function that produces the initial state for each scope, based on the state of the parent scope (or `undefined` if there is no parent scope).
+   * @returns A scope macro, and a getter and a setter for the state.
+   */
+  static createScopedState<S>(
+    initial: (parentState?: S) => S,
+  ): [
+    (props: { children?: Expressions }) => Expression,
+    (ctx: Context) => S,
+    (ctx: Context, newState: S) => void,
+  ] {
+    return doCreateScopedState(initial);
   }
 
   /**

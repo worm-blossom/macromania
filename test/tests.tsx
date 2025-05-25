@@ -741,3 +741,59 @@ Deno.test("sequential", async () => {
     assertEquals(first, "d");
   })();
 });
+
+Deno.test("createScopedState", async () => {
+  await (async () => {
+    const [TestStateScope, getState, setState] = Context.createScopedState<
+      string
+    >(() => "a");
+
+    function GetState(): Expression {
+      return <impure fun={(ctx) => getState(ctx)} />;
+    }
+
+    function SetState({ s }: { s: string }): Expression {
+      return (
+        <impure
+          fun={(ctx) => {
+            setState(ctx, s);
+            return "";
+          }}
+        />
+      );
+    }
+
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <>
+        <GetState />
+        <SetState s="b" />
+        <GetState />
+        <TestStateScope>
+          <GetState />
+          <SetState s="c" />
+          <GetState />
+          <impure
+            fun={(ctx) => {
+              if (ctx.mustMakeProgress()) {
+                return <GetState />;
+              } else {
+                return null;
+              }
+            }}
+          />
+        </TestStateScope>
+        <GetState />
+        <TestStateScope>
+          <TestStateScope>
+            <SetState s="d" />
+            <GetState />
+          </TestStateScope>
+          <GetState />
+        </TestStateScope>
+        <GetState />
+      </>,
+    );
+    assertEquals(got, "abaccbdab");
+  })();
+});
