@@ -11,6 +11,35 @@ import {
 } from "../mod.ts";
 import { newStack, type Stack } from "../stack.ts";
 
+Deno.test("mustMakeProgress regression", async () => {
+  function A(): Expression {
+    return (
+      <impure
+        fun={(_) => {
+          return (
+            <impure
+              fun={(ctx) => {
+                if (ctx.mustMakeProgress()) {
+                  return "Hi!";
+                } else {
+                  return null;
+                }
+              }}
+            />
+          );
+        }}
+      />
+    );
+  }
+
+  const ctx = new Context();
+  const got = await ctx.evaluate(
+    <A />,
+  );
+
+  assertEquals(got, "Hi!");
+});
+
 function assertStack(s_: Stack<DebuggingInformation>, expected: string[]) {
   function report() {
     console.log(expected);

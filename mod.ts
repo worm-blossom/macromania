@@ -622,14 +622,10 @@ export class Context {
 
         const oldEtp = this.etp;
         for (let i = 0; i < exp.fragment.length; i++) {
-          this.etp = oldEtp.appendChild({ indexInParent: i, dbg: {} });
+          this.etp = oldEtp.appendChild(i);
           allEvaluated.push(await this.doEvaluate(exp.fragment[i]));
           this.etp = oldEtp;
         }
-
-        // for (const inner of exp.fragment) {
-        //   allEvaluated.push(await this.doEvaluate(inner));
-        // }
 
         const compressed = simplifyExpressionsArray(allEvaluated);
 
@@ -661,7 +657,7 @@ export class Context {
         // We want to create disjoin ETPs for the evaluation of the inner expression and the evaluation of the result of mapping. Hence, we pop an index of zero before the inner evaluation, and wrap the successfully mapped result at second position of a fragment expression.
 
         const oldEtp = this.etp;
-        this.etp = oldEtp.appendChild({ indexInParent: 0, dbg: {} });
+        this.etp = oldEtp.appendChild(0);
         const evaluated = await this.doEvaluate(exp.map.exp);
         this.etp = oldEtp;
 
@@ -674,7 +670,7 @@ export class Context {
         }
       } else if (expIsMacro(exp)) {
         const oldEtp = this.etp;
-        this.etp = oldEtp.appendChild({ indexInParent: 0, dbg: {} });
+        this.etp = oldEtp.appendChild(0);
         const evaled = await this.doEvaluate(exp.macro);
         this.etp = oldEtp;
 
@@ -682,8 +678,8 @@ export class Context {
           ret = evaled;
         } else {
           ret = exp;
+          exp.macro = evaled;
         }
-        // ret = await this.doEvaluate(exp.macro);
       } else {
         return this.printNonExp(exp);
       }

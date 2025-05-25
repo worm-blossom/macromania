@@ -1,18 +1,8 @@
-import type { DebuggingInformation } from "macromaniajsx/jsx-dev-runtime";
 import { newStack, type Stack } from "./stack.ts";
-
-export type EvaluationNodeInfo = {
-  indexInParent: number;
-  dbg: DebuggingInformation;
-};
-
-function infoEq(fst: EvaluationNodeInfo, snd: EvaluationNodeInfo): boolean {
-  return fst.indexInParent === snd.indexInParent;
-}
 
 export class EvaluationTreePosition {
   protected theDepth: number;
-  protected stack: Stack<EvaluationNodeInfo>;
+  protected stack: Stack<number>; // index in parent
 
   /**
    * Creates a new root {@linkcode EvaluationTreePosition}.
@@ -39,20 +29,7 @@ export class EvaluationTreePosition {
     if (tos === undefined) {
       return -1;
     } else {
-      return tos.indexInParent;
-    }
-  }
-
-  /**
-   * Returns the {@linkcode DebuggingInformation} of this node, if any (the implicit root node doesn't have any).
-   */
-  debuggingInformation(): DebuggingInformation | undefined {
-    const tos = this.stack.peek();
-
-    if (tos === undefined) {
-      return undefined;
-    } else {
-      return tos.dbg;
+      return tos;
     }
   }
 
@@ -117,7 +94,11 @@ export class EvaluationTreePosition {
         otherStack = otherStack.pop();
       }
 
-      return myStack.peek()!.indexInParent <= otherStack.peek()!.indexInParent;
+      if (myStack.isEmpty()) {
+        return true;
+      } else {
+        return myStack.peek()! <= otherStack.peek()!;
+      }
     }
   }
 
@@ -145,7 +126,9 @@ export class EvaluationTreePosition {
   /**
    * Returns the position of the deepest common ancestor of this node and another node.
    */
-  deepestCommonAncestor(other: EvaluationTreePosition): EvaluationTreePosition {
+  protected deepestCommonAncestor(
+    other: EvaluationTreePosition,
+  ): EvaluationTreePosition {
     let myStack = this.stack;
     let myDepth = this.theDepth;
     let otherStack = other.stack;
@@ -161,15 +144,26 @@ export class EvaluationTreePosition {
       otherDepth -= 1;
     }
 
-    while (myStack !== otherStack) {
+    let candidate = myStack;
+    while (myDepth > 0) {
+      if (myStack === otherStack) {
+        break;
+      }
+
+      const unequalTos = myStack.peek() !== otherStack.peek();
+
       myStack = myStack.pop();
       otherStack = otherStack.pop();
       myDepth -= 1;
+
+      if (unequalTos) {
+        candidate = myStack;
+      }
     }
 
     const ret = new EvaluationTreePosition();
     ret.theDepth = myDepth;
-    ret.stack = myStack;
+    ret.stack = candidate;
     return ret;
   }
 }
@@ -179,23 +173,17 @@ export class EvaluationTreePositionImpl extends EvaluationTreePosition {
     super();
   }
 
-  appendChild(nodeInfo: EvaluationNodeInfo): EvaluationTreePositionImpl {
+  appendChild(indexInParent: number): EvaluationTreePositionImpl {
     const ret = new EvaluationTreePositionImpl();
     ret.theDepth = this.theDepth + 1;
-    ret.stack = this.stack.push(nodeInfo);
+    ret.stack = this.stack.push(indexInParent);
     return ret;
-  }
-
-  override deepestCommonAncestor(
-    other: EvaluationTreePosition,
-  ): EvaluationTreePositionImpl {
-    return <EvaluationTreePositionImpl> super.deepestCommonAncestor(other);
   }
 }
 
 function stacksOfEqualLengthEq(
-  fst: Stack<EvaluationNodeInfo>,
-  snd: Stack<EvaluationNodeInfo>,
+  fst: Stack<number>,
+  snd: Stack<number>,
 ): boolean {
   if (fst === snd) {
     return true;
@@ -208,7 +196,7 @@ function stacksOfEqualLengthEq(
     } else if (fstTos === undefined || snd === undefined) {
       return false;
     } else {
-      return infoEq(fstTos, sndTos!) &&
+      return fstTos === sndTos! &&
         stacksOfEqualLengthEq(fst.pop(), snd.pop());
     }
   }
