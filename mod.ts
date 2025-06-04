@@ -23,7 +23,7 @@ import {
   EvaluationTreePosition,
   EvaluationTreePositionImpl,
 } from "./evaluationTreePosition.ts";
-import { doCreateScopedState } from "./stateHelpers.tsx";
+import { doCreateConfig, doCreateScopedState } from "./stateHelpers.tsx";
 
 /**
  * An expression, to be evaluated to a string.
@@ -379,6 +379,25 @@ export class Context {
     (ctx: Context, newState: S) => void,
   ] {
     return doCreateScopedState(initial);
+  }
+
+  /**
+   * Create a configuration macro, and a getter for accessing any configured state.
+   * 
+   * The configuration state of type `C` is a record mapping strings to (typically) optional values. The `initial` function produces the default configuration, providing a value for each key.
+   * 
+   * Users use the first return value, a macro for setting configuration values. That macro accepts an optional prop for each key of `C`. When evaluating the children of this macro, the props that were set overwrite the config values of the parent scope (the default configuration if there is no parent configuration macro).
+   * 
+   * The second return value lets macro authors access configuration values.
+   */
+  // deno-lint-ignore no-explicit-any
+  static createConfig<C extends Record<string, any>>(
+    initial: () => Required<C>,
+  ): [
+    (props: C | { children?: Expressions }) => Expression,
+      (ctx: Context) => Required<C>,
+  ] {
+    return doCreateConfig(initial);
   }
 
   /**

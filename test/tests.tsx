@@ -797,3 +797,76 @@ Deno.test("createScopedState", async () => {
     assertEquals(got, "abaccbdab");
   })();
 });
+
+type ExampleConfig = {
+  a?: number;
+  b?: number;
+};
+
+Deno.test("createConfig", async () => {
+  await (async () => {
+    const [ConfigMacro, getConfig] = Context.createConfig<ExampleConfig>(
+      () => ({ a: 0, b: 1 }),
+    );
+
+    const ctx = new Context();
+    const got = await ctx.evaluate(
+      <>
+        <impure
+          fun={(ctx) => {
+            assertEquals(getConfig(ctx).a, 0);
+            assertEquals(getConfig(ctx).b, 1);
+            return "";
+          }}
+        />
+
+        <ConfigMacro a={2}>
+          <impure
+            fun={(ctx) => {
+              assertEquals(getConfig(ctx).a, 2);
+              assertEquals(getConfig(ctx).b, 1);
+              return "";
+            }}
+          />
+
+          <ConfigMacro a={3} b={4}>
+            <impure
+              fun={(ctx) => {
+                assertEquals(getConfig(ctx).a, 3);
+                assertEquals(getConfig(ctx).b, 4);
+                return "";
+              }}
+            />
+          </ConfigMacro>
+
+          <impure
+            fun={(ctx) => {
+              assertEquals(getConfig(ctx).a, 2);
+              assertEquals(getConfig(ctx).b, 1);
+              return "";
+            }}
+          />
+        </ConfigMacro>
+
+        <ConfigMacro b={5}>
+          <impure
+            fun={(ctx) => {
+              assertEquals(getConfig(ctx).a, 0);
+              assertEquals(getConfig(ctx).b, 5);
+              return "";
+            }}
+          />
+        </ConfigMacro>
+
+        <impure
+          fun={(ctx) => {
+            assertEquals(getConfig(ctx).a, 0);
+            assertEquals(getConfig(ctx).b, 1);
+            return "";
+          }}
+        />
+      </>,
+    );
+    assertEquals(got, "");
+  })();
+});

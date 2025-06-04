@@ -41,3 +41,48 @@ export function doCreateScopedState<S>(
 
   return [StateScope, get, set];
 }
+
+// deno-lint-ignore no-explicit-any
+export function doCreateConfig<C extends Record<string, any>>(
+  initial: () => Required<C>,
+): [
+  (props: C | { children?: Expressions }) => Expression,
+  (ctx: Context) => Required<C>,
+] {
+  const [StateScope, get, _set] = doCreateScopedState<Required<C>>(
+    (parentState) => {
+      if (parentState === undefined) {
+        return initial();
+      } else {
+        return { ...parentState };
+      }
+    },
+  );
+
+  function ConfigScope(props: C | { children?: Expressions }): Expression {
+    return (
+      <StateScope>
+        <impure
+          fun={(ctx) => {
+            const state = get(ctx);
+
+            for (const key in props) {
+              if (
+                key !== "children" &&
+                Object.prototype.hasOwnProperty.call(props, key)
+              ) {
+                const element = (props as C)[key];
+                // deno-lint-ignore no-explicit-any
+                (state as any)[key] = element;
+              }
+            }
+
+            return <exps x={props.children} />;
+          }}
+        />
+      </StateScope>
+    );
+  }
+
+  return [ConfigScope, get];
+}
