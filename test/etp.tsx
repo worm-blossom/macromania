@@ -3,24 +3,24 @@ Tests for EvaluationTreePositions (ETPs).
 */
 
 import { assert } from "@std/assert";
-import { Context, type Expression, type Expressions } from "../mod.ts";
+import { type Children, Context, type Expression } from "../mod.ts";
 import type { EvaluationTreePosition } from "../evaluationTreePosition.ts";
 
 type EtpPointer = { ptr?: EvaluationTreePosition };
 
 Deno.test("etp simple", async () => {
-  function A({ children }: { children?: Expressions }): Expression {
-    return <exps x={children} />;
+  function A({ children }: { children?: Children }): Expression {
+    return <>{children}</>;
   }
 
   function SaveEtp(
-    { children, ptr }: { children?: Expressions; ptr: EtpPointer },
+    { children, ptr }: { children?: Children; ptr: EtpPointer },
   ): Expression {
     return (
       <impure
         fun={(ctx: Context) => {
           ptr.ptr = ctx.getEvaluationTreePosition();
-          return <exps x={children} />;
+          return <>{children}</>;
         }}
       />
     );
@@ -130,13 +130,13 @@ Deno.test("etp simple", async () => {
 
 Deno.test("etp delayed", async () => {
   function SaveEtp(
-    { children, ptr }: { children?: Expressions; ptr: EtpPointer },
+    { children, ptr }: { children?: Children; ptr: EtpPointer },
   ): Expression {
     return (
       <impure
         fun={(ctx: Context) => {
           ptr.ptr = ctx.getEvaluationTreePosition();
-          return <exps x={children} />;
+          return <>{children}</>;
         }}
       />
     );
@@ -175,13 +175,13 @@ Deno.test("etp delayed", async () => {
 
 Deno.test("etp map", async () => {
   function SaveEtp(
-    { children, ptr }: { children?: Expressions; ptr: EtpPointer },
+    { children, ptr }: { children?: Children; ptr: EtpPointer },
   ): Expression {
     return (
       <impure
         fun={(ctx: Context) => {
           ptr.ptr = ctx.getEvaluationTreePosition();
-          return <exps x={children} />;
+          return <>{children}</>;
         }}
       />
     );

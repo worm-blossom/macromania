@@ -7,7 +7,7 @@ import {
   Context,
   type DebuggingInformation,
   type Expression,
-  type Expressions,
+  type Children,
 } from "../mod.ts";
 import { newStack, type Stack } from "../stack.ts";
 
@@ -193,8 +193,8 @@ Deno.test("stack 3", async () => {
 });
 
 Deno.test("stack 4", async () => {
-  function A({ children }: { children: Expressions }): Expression {
-    return <exps x={children} />;
+  function A({ children }: { children: Children }): Expression {
+    return <>{children}</>;
   }
 
   function B({ children }: { children: Expression }): Expression {
@@ -388,11 +388,11 @@ Deno.test("stack 8", async () => {
 });
 
 Deno.test("stack 9", async () => {
-  function A({ children }: { children: Expressions }): Expression {
+  function A({ children }: { children: Children }): Expression {
     return (
       <map
         fun={(evaled, ctx) => {
-          return <exps x={children} />;
+          return <>{children}</>;
         }}
       >
         42

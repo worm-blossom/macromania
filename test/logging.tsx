@@ -1,7 +1,7 @@
 import {
   Context,
   Expression,
-  Expressions,
+  Children,
 } from "macromaniajsx/jsx-dev-runtime";
 import { LoggingBackend, LogLevel } from "../loggingBackend.ts";
 import { assertEquals } from "@std/assert/assert-equals";
@@ -266,7 +266,7 @@ Deno.test("logging macro-specific levels isolated regression 1", async () => {
     );
   }
 
-  function A({ children }: { children?: Expressions }): Expression {
+  function A({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -275,12 +275,12 @@ Deno.test("logging macro-specific levels isolated regression 1", async () => {
         <warn>
           Aw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
 
-  function B({ children }: { children?: Expressions }): Expression {
+  function B({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -289,7 +289,7 @@ Deno.test("logging macro-specific levels isolated regression 1", async () => {
         <warn>
           Bw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
@@ -368,7 +368,7 @@ Deno.test("logging macro-specific levels isolated regression 2", async () => {
     );
   }
 
-  function A({ children }: { children?: Expressions }): Expression {
+  function A({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -377,12 +377,12 @@ Deno.test("logging macro-specific levels isolated regression 2", async () => {
         <warn>
           Aw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
 
-  function B({ children }: { children?: Expressions }): Expression {
+  function B({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -391,7 +391,7 @@ Deno.test("logging macro-specific levels isolated regression 2", async () => {
         <warn>
           Bw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
@@ -472,7 +472,7 @@ Deno.test("logging macro-specific levels isolated regression 3", async () => {
     );
   }
 
-  function A({ children }: { children?: Expressions }): Expression {
+  function A({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -481,12 +481,12 @@ Deno.test("logging macro-specific levels isolated regression 3", async () => {
         <warn>
           Aw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
 
-  function B({ children }: { children?: Expressions }): Expression {
+  function B({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -495,7 +495,7 @@ Deno.test("logging macro-specific levels isolated regression 3", async () => {
         <warn>
           Bw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
@@ -576,7 +576,7 @@ Deno.test("logging macro-specific levels isolated regression 4", async () => {
     );
   }
 
-  function A({ children }: { children?: Expressions }): Expression {
+  function A({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -585,12 +585,12 @@ Deno.test("logging macro-specific levels isolated regression 4", async () => {
         <warn>
           Aw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
 
-  function B({ children }: { children?: Expressions }): Expression {
+  function B({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -599,7 +599,7 @@ Deno.test("logging macro-specific levels isolated regression 4", async () => {
         <warn>
           Bw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
@@ -682,7 +682,7 @@ Deno.test("logging macro-specific levels isolated regression 5", async () => {
     );
   }
 
-  function A({ children }: { children?: Expressions }): Expression {
+  function A({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -691,12 +691,12 @@ Deno.test("logging macro-specific levels isolated regression 5", async () => {
         <warn>
           Aw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
 
-  function B({ children }: { children?: Expressions }): Expression {
+  function B({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -705,7 +705,7 @@ Deno.test("logging macro-specific levels isolated regression 5", async () => {
         <warn>
           Bw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
@@ -788,7 +788,7 @@ Deno.test("logging macro-specific levels", async () => {
     );
   }
 
-  function A({ children }: { children?: Expressions }): Expression {
+  function A({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -797,12 +797,12 @@ Deno.test("logging macro-specific levels", async () => {
         <warn>
           Aw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }
 
-  function B({ children }: { children?: Expressions }): Expression {
+  function B({ children }: { children?: Children }): Expression {
     return (
       <>
         <trace>
@@ -811,7 +811,7 @@ Deno.test("logging macro-specific levels", async () => {
         <warn>
           Bw<Count />
         </warn>
-        <exps x={children} />
+        <>{children}</>
       </>
     );
   }

@@ -49,7 +49,7 @@ export class EvaluationTreePosition {
    */
   isAncestorOf(other: EvaluationTreePosition): boolean {
     const dca = this.deepestCommonAncestor(other);
-    return this.stack === dca.stack;
+    return this.equals(dca);
   }
 
   /**
@@ -90,7 +90,7 @@ export class EvaluationTreePosition {
       }
 
       let otherStack = other.stack;
-      for (let otherI = this.theDepth; otherI + 1 > dca.theDepth; otherI--) {
+      for (let otherI = other.theDepth; otherI + 1 > dca.theDepth; otherI--) {
         otherStack = otherStack.pop();
       }
 
@@ -145,6 +145,8 @@ export class EvaluationTreePosition {
     }
 
     let candidate = myStack;
+    let candidateDepth = myDepth;
+
     while (myDepth > 0) {
       if (myStack === otherStack) {
         break;
@@ -158,11 +160,12 @@ export class EvaluationTreePosition {
 
       if (unequalTos) {
         candidate = myStack;
+        candidateDepth = myDepth;
       }
     }
 
     const ret = new EvaluationTreePosition();
-    ret.theDepth = myDepth;
+    ret.theDepth = candidateDepth;
     ret.stack = candidate;
     return ret;
   }

@@ -361,7 +361,7 @@ export class Context {
   static createScopedState<S>(
     initial: (parentState?: S) => S,
   ): [
-    (props: { children?: Expressions }) => Expression,
+    (props: { children?: Children }) => Expression,
     (ctx: Context) => S,
     (ctx: Context, newState: S) => void,
   ] {
@@ -381,7 +381,7 @@ export class Context {
   static createConfig<C extends Record<string, any>>(
     initial: () => Required<C>,
   ): [
-    (props: C | { children?: Expressions }) => Expression,
+    (props: C | { children?: Children }) => Expression,
     (ctx: Context) => Required<C>,
   ] {
     return doCreateConfig(initial);
@@ -620,8 +620,12 @@ export class Context {
     }
   }
 
-  // Attempt to evaluate a single Expression.
-  private async doEvaluate(exp: Expression): Promise<Expression> {
+  // Attempt to evaluate a single Expression, or `Children`.
+  private async doEvaluate(exps: Children): Promise<Expression> {
+    const exp = exps === undefined || Array.isArray(exps)
+      ? fragmentExp(expressions(exps))
+      : exps;
+
     if (!canBeEvaluatedOneStep(exp)) {
       return this.printNonExp(exp);
     }
@@ -851,17 +855,16 @@ function simplifyExpressionsArray(
 
 /**
  * Utility type for macros that accept an arbitrary number of children.
- * Use with {@linkcode expressions} to convert into an `Expression[]`.
  */
-export type Expressions = undefined | Expression | Expression[];
+export type Children = undefined | Expression | Expression[];
 
 /**
  * Take the output of a jsx transform and turn it into an array of
  * {@linkcode Expression}s.
- * @param children Some {@linkcode Expressions} to convert.
- * @returns An array of {@linkcode Expression} containing all children.
+ * @param children Some {@linkcode Children} to convert.
+ * @returns An array of {@linkcode Children} containing all children.
  */
-function expressions(children: Expressions): Expression[] {
+function expressions(children: Children): Expression[] {
   if (children === undefined) {
     return [];
   } else if (Array.isArray(children)) {
@@ -883,7 +886,6 @@ type MacromaniaIntrinsic =
   | "map"
   | "lifecycle"
   | "halt"
-  | "exps"
   | "loggingLevel"
   | "debug"
   | "trace"
@@ -910,7 +912,7 @@ type PropsImpure = {
 };
 
 type PropsMap = {
-  children?: Expressions;
+  children?: Children;
   /**
    * Receive the evaluated children of the `map` intrinsic and map them (and
    * the current {@linkcode Context}) to a new {@linkcode Expression} to
@@ -925,21 +927,14 @@ type PropsMap = {
 };
 
 type PropsLifecycle = {
-  children?: Expressions;
+  children?: Children;
   pre?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
   post?: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
 };
 
-type PropsOmnomnom = { children?: Expressions };
+type PropsOmnomnom = { children?: Children };
 
 type PropsHalt = Record<string | number | symbol, never>;
-
-type PropsExps = {
-  /**
-   * The `Expressions` to convert into a single expression.
-   */
-  x?: Expressions;
-};
 
 type PropsLoggingLevel = {
   /**
@@ -953,49 +948,49 @@ type PropsLoggingLevel = {
   /**
    * The expressions to evaluate using the new logging level.
    */
-  children: Expressions;
+  children: Children;
 };
 
 type PropsDebug = {
   /**
    * The expressions to evaluate to a string and to then log at logging level `"debug"`.
    */
-  children?: Expressions;
+  children?: Children;
 };
 
 type PropsTrace = {
   /**
    * The expressions to evaluate to a string and to then log at logging level `"trace"`.
    */
-  children?: Expressions;
+  children?: Children;
 };
 
 type PropsInfo = {
   /**
    * The expressions to evaluate to a string and to then log at logging level `"info"`.
    */
-  children?: Expressions;
+  children?: Children;
 };
 
 type PropsWarn = {
   /**
    * The expressions to evaluate to a string and to then log at logging level `"warn"`.
    */
-  children?: Expressions;
+  children?: Children;
 };
 
 type PropsError = {
   /**
    * The expressions to evaluate to a string and to then log at logging level `"error"`.
    */
-  children?: Expressions;
+  children?: Children;
 };
 
 type PropsLoggingGroup = {
   /**
    * The expressions to evaluate. Any logging inside this intrinsic will be grouped together.
    */
-  children?: Expressions;
+  children?: Children;
 };
 
 type PropsSequential = {
@@ -1041,10 +1036,6 @@ export declare namespace JSX {
      * Print a stacktrace and halt evaluation.
      */
     halt: PropsHalt;
-    /**
-     * Convert some `Expressions` into a single expression.
-     */
-    exps: PropsExps;
     /**
      * Evaluate the children and log the resulting string at logging level `"debug"`.
      * This intrinsic itself evaluates to the empty string.
@@ -1158,8 +1149,6 @@ export function jsxDEV(
       props.pre ?? ((_) => {}),
       props.post ?? ((_) => {}),
     );
-  } else if (macro === "exps") {
-    return fragmentExp(expressions(props.x));
   } else if (macro === "omnomnom") {
     return mapExp(fragmentExp(expressions(props.children)), () => "");
   } else if (macro === "halt") {

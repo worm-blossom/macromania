@@ -1,19 +1,19 @@
 import {
   Context,
   type Expression,
-  type Expressions,
+  type Children,
 } from "macromaniajsx/jsx-dev-runtime";
 
 export function doCreateScopedState<S>(
   initial: (parentState?: S) => S,
 ): [
-  (props: { children?: Expressions }) => Expression,
+  (props: { children?: Children }) => Expression,
   (ctx: Context) => S,
   (ctx: Context, newState: S) => void,
 ] {
   const [get, set] = Context.createState<S>(initial);
 
-  function StateScope({ children }: { children?: Expressions }): Expression {
+  function StateScope({ children }: { children?: Children }): Expression {
     return (
       <impure
         fun={(ctx) => {
@@ -31,7 +31,7 @@ export function doCreateScopedState<S>(
                 set(ctx, parentState);
               }}
             >
-              <exps x={children} />
+              {children}
             </lifecycle>
           );
         }}
@@ -46,7 +46,7 @@ export function doCreateScopedState<S>(
 export function doCreateConfig<C extends Record<string, any>>(
   initial: () => Required<C>,
 ): [
-  (props: C | { children?: Expressions }) => Expression,
+  (props: C | { children?: Children }) => Expression,
   (ctx: Context) => Required<C>,
 ] {
   const [StateScope, get, _set] = doCreateScopedState<Required<C>>(
@@ -59,7 +59,7 @@ export function doCreateConfig<C extends Record<string, any>>(
     },
   );
 
-  function ConfigScope(props: C | { children?: Expressions }): Expression {
+  function ConfigScope(props: C | { children?: Children }): Expression {
     return (
       <StateScope>
         <impure
@@ -77,7 +77,7 @@ export function doCreateConfig<C extends Record<string, any>>(
               }
             }
 
-            return <exps x={props.children} />;
+            return <>{props.children}</>;
           }}
         />
       </StateScope>

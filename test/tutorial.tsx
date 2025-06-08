@@ -14,6 +14,11 @@ features of Macromania. It also happens to double as a test suite.
 */
 import { assertEquals } from "@std/assert";
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Warning: This tutorial was written for macromania 1.0.0, and has not been properly updated for verison 2.0.0. //
+// The text might be out of sync with the code at times.                                                         //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 ///////////////////
 // 1. The Basics //
 ///////////////////
@@ -165,7 +170,7 @@ Deno.test("jsx props", async () => {
 });
 
 ////////////////////////
-// Impure Expressions //
+// Impure Children //
 ////////////////////////
 
 /*
@@ -361,7 +366,7 @@ Deno.test("defs and refs", async () => {
 });
 
 ///////////////////////////
-// Lifecycle Expressions //
+// Lifecycle Children //
 ///////////////////////////
 
 /*
@@ -429,7 +434,7 @@ several evaluation attempts.
 */
 
 /////////////////////
-// Map Expressions //
+// Map Children //
 /////////////////////
 
 /*
@@ -480,12 +485,12 @@ Deno.test("halt intrinsic", async () => {
 If you want to define a macro that can operate on any number of children, then
 the typechecker start complaining because of the way that jsx gets compiled.
 
-Use the `Expressions` type and the `expressions` function to work around it.
+Use the `Children` type and the `expressions` function to work around it.
 */
-import type { Expressions } from "../mod.ts";
+import type { Children } from "../mod.ts";
 
 Deno.test("many children", async () => {
-  function Many({ children }: { children?: Expressions }): Expression {
+  function Many({ children }: { children?: Children }): Expression {
     if (children === undefined) {
       return "0";
     } else if (Array.isArray(children)) {
@@ -509,13 +514,13 @@ Deno.test("many children", async () => {
 });
 
 /*
-If you need to treat some `Expressions | undefined` as a single `Expression`,
+If you need to treat some `Children | undefined` as a single `Expression`,
 the `<exps />` intrinsic has you covered:
 */
 
 Deno.test("exps", async () => {
-  function ExpsDemo({ children }: { children?: Expressions }): Expression {
-    return <exps x={children} />;
+  function ExpsDemo({ children }: { children?: Children }): Expression {
+    return <>{children}</>;
   }
 
   const ctx1 = new Context();
