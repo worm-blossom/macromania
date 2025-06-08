@@ -20,7 +20,7 @@ import { newStack, type Stack } from "./stack.ts";
 import { DefaultLogger } from "./defaultLogger.ts";
 import { LogLevelStacks } from "./logLevelStacks.ts";
 import {
-  EvaluationTreePosition,
+  type EvaluationTreePosition,
   EvaluationTreePositionImpl,
 } from "./evaluationTreePosition.ts";
 import { doCreateConfig, doCreateScopedState } from "./stateHelpers.tsx";

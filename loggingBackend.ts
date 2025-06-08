@@ -1,27 +1,28 @@
-import type { DebuggingInformation } from "macromaniajsx/jsx-dev-runtime";
-
 /**
  * Different logging levels, in ascending order of priority.
  *
+ * - `ignore`: Never logged (I mean, you *can* configure things to log these, but that isn't the intention).
  * - `debug`: Temporarily added logging calls for debugging. Should be removed before release.
  * - `trace`: Information about the flow of logic in some code.
  * - `info`: Interesting but non-critical, user-facing information.
  * - `warn`: Inform about recoverable but undesirable state.
  * - `error`: Information about an irrecoverable fault.
  */
-export type LogLevel = "debug" | "trace" | "info" | "warn" | "error";
+export type LogLevel = "ignore" | "debug" | "trace" | "info" | "warn" | "error";
 
 function levelToInt(level: LogLevel): number {
-  if (level === "debug") {
+  if (level === "ignore") {
     return 0;
-  } else if (level === "trace") {
+  } else if (level === "debug") {
     return 1;
-  } else if (level === "info") {
+  } else if (level === "trace") {
     return 2;
-  } else if (level === "warn") {
+  } else if (level === "info") {
     return 3;
-  } else {
+  } else if (level === "warn") {
     return 4;
+  } else {
+    return 5;
   }
 }
 
@@ -55,6 +56,20 @@ export function logGt(fst: LogLevel, snd: LogLevel): boolean {
  */
 export function logGte(fst: LogLevel, snd: LogLevel): boolean {
   return levelToInt(fst) >= levelToInt(snd);
+}
+
+/**
+ * Return the lesser of the two given logging levels.
+ */
+export function logMin(fst: LogLevel, snd: LogLevel): LogLevel {
+  return levelToInt(fst) <= levelToInt(snd) ? fst : snd;
+}
+
+/**
+ * Return the greater of the two given logging levels.
+ */
+export function logMax(fst: LogLevel, snd: LogLevel): LogLevel {
+  return levelToInt(fst) >= levelToInt(snd) ? fst : snd;
 }
 
 /**

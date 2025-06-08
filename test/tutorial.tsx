@@ -170,7 +170,7 @@ Deno.test("jsx props", async () => {
 });
 
 ////////////////////////
-// Impure Children //
+// Impure Expressions //
 ////////////////////////
 
 /*
@@ -366,7 +366,7 @@ Deno.test("defs and refs", async () => {
 });
 
 ///////////////////////////
-// Lifecycle Children //
+// Lifecycle Expressions //
 ///////////////////////////
 
 /*
@@ -434,7 +434,7 @@ several evaluation attempts.
 */
 
 /////////////////////
-// Map Children //
+// Map Expressions //
 /////////////////////
 
 /*
@@ -519,20 +519,20 @@ the `<exps />` intrinsic has you covered:
 */
 
 Deno.test("exps", async () => {
-  function ExpsDemo({ children }: { children?: Children }): Expression {
+  function ChildrenDemo({ children }: { children?: Children }): Expression {
     return <>{children}</>;
   }
 
   const ctx1 = new Context();
-  const got1 = await ctx1.evaluate(<ExpsDemo />);
+  const got1 = await ctx1.evaluate(<ChildrenDemo />);
   assertEquals(got1, "");
 
   const ctx2 = new Context();
-  const got2 = await ctx2.evaluate(<ExpsDemo>foo</ExpsDemo>);
+  const got2 = await ctx2.evaluate(<ChildrenDemo>foo</ChildrenDemo>);
   assertEquals(got2, "foo");
 
   const ctx3 = new Context();
-  const got3 = await ctx3.evaluate(<ExpsDemo>{"foo"}{"bar"}{"baz"}</ExpsDemo>);
+  const got3 = await ctx3.evaluate(<ChildrenDemo>{"foo"}{"bar"}{"baz"}</ChildrenDemo>);
   assertEquals(got3, "foobarbaz");
 });
 
