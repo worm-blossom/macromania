@@ -240,7 +240,7 @@ export type Macro = (props: any) => Expression;
  */
 export interface DebuggingInformation {
   /**
-   * Set to true if the expression is a macro call written by the user, set to false for builtins and for macor calls which are part of other macros.
+   * Set to true if the expression is a macro call written by the user, set to false for builtins and for macro calls which are part of other macros.
    *
    * Expressions appear in stack traces if and only if this is true.
    */
@@ -383,11 +383,11 @@ export class Context {
 
   /**
    * Create a configuration macro, and a getter for accessing any configured state.
-   * 
+   *
    * The configuration state of type `C` is a record mapping strings to (typically) optional values. The `initial` function produces the default configuration, providing a value for each key.
-   * 
+   *
    * Users use the first return value, a macro for setting configuration values. That macro accepts an optional prop for each key of `C`. When evaluating the children of this macro, the props that were set overwrite the config values of the parent scope (the default configuration if there is no parent configuration macro).
-   * 
+   *
    * The second return value lets macro authors access configuration values.
    */
   // deno-lint-ignore no-explicit-any
@@ -395,7 +395,7 @@ export class Context {
     initial: () => Required<C>,
   ): [
     (props: C | { children?: Expressions }) => Expression,
-      (ctx: Context) => Required<C>,
+    (ctx: Context) => Required<C>,
   ] {
     return doCreateConfig(initial);
   }
