@@ -47,7 +47,7 @@ export type Expression =
  * A fragment consists of an array of expressions. They are evaulated in
  * sequence and the results are concatenated.
  */
-type FragmentExpression = { fragment: Expression[]; dbg: DebuggingInformation };
+type FragmentExpression = { fragment: Expression[] };
 
 /**
  * An impure expression maps the evaluation {@linkcode Context} to another
@@ -59,7 +59,6 @@ type ImpureExpression = {
   impure:
     | ((ctx: Context) => Expression | null)
     | ((ctx: Context) => Promise<Expression | null>);
-  dbg: DebuggingInformation;
 };
 
 /**
@@ -71,7 +70,6 @@ type LifecycleExpression = {
     pre: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
     post: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>);
   };
-  dbg: DebuggingInformation;
 };
 
 /**
@@ -85,7 +83,6 @@ type MapExpression = {
       | ((evaluated: string, ctx: Context) => Expression)
       | ((evaluated: string, ctx: Context) => Promise<Expression>);
   };
-  dbg: DebuggingInformation;
 };
 
 /**
@@ -98,27 +95,24 @@ type MacroExpression = {
 
 function fragmentExp(
   exps: Expression[],
-  dbg: DebuggingInformation,
 ): Expression {
-  return { fragment: exps, dbg };
+  return { fragment: exps };
 }
 
 function impureExp(
   fun:
     | ((ctx: Context) => Expression | null)
     | ((ctx: Context) => Promise<Expression | null>),
-  dbg: DebuggingInformation,
 ): Expression {
-  return { impure: fun, dbg };
+  return { impure: fun };
 }
 
 function lifecycleExp(
   exp: Expression,
   pre: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>),
   post: ((ctx: Context) => void) | ((ctx: Context) => Promise<void>),
-  dbg: DebuggingInformation,
 ): Expression {
-  return { lifecycle: { exp, pre, post }, dbg };
+  return { lifecycle: { exp, pre, post } };
 }
 
 function mapExp(
@@ -126,11 +120,9 @@ function mapExp(
   fun:
     | ((evaluated: string, ctx: Context) => Expression)
     | ((evaluated: string, ctx: Context) => Promise<Expression>),
-  dbg: DebuggingInformation,
 ): Expression {
   return {
     map: { exp, fun },
-    dbg,
   };
 }
 
@@ -171,11 +163,6 @@ function expIsMacro(
   return (typeof exp !== "string") && ("macro" in exp);
 }
 
-// deno-lint-ignore no-explicit-any
-function hasDbg(x: any): boolean {
-  return Object.hasOwn(x, "dbg") && typeof x.dbg === "object";
-}
-
 /**
  * Return whether the given javascript value can be passed to `doEvaluate`
  * without crashing in the outermost case distinction.
@@ -191,11 +178,11 @@ function canBeEvaluatedOneStep(x: any): boolean {
     if (Object.hasOwn(x, "fragment")) {
       // We might have a fragment expression.
       // Check if the inner value is an array.
-      return Array.isArray(x.fragment) && hasDbg(x);
+      return Array.isArray(x.fragment);
     } else if (Object.hasOwn(x, "impure")) {
       // We might have an impure expression.
       // Check if the inner value is a function.
-      return typeof x.impure === "function" && hasDbg(x);
+      return typeof x.impure === "function";
     } else if (Object.hasOwn(x, "lifecycle")) {
       // We might have a preprocess expression.
       const inner = x.lifecycle;
@@ -205,7 +192,7 @@ function canBeEvaluatedOneStep(x: any): boolean {
         // Check if it has a `fun` function and an `exp` property.
         return Object.hasOwn(inner, "pre") && typeof inner.pre === "function" &&
           Object.hasOwn(inner, "post") && typeof inner.post === "function" &&
-          Object.hasOwn(inner, "exp") && hasDbg(x);
+          Object.hasOwn(inner, "exp");
       }
     } else if (Object.hasOwn(x, "map")) {
       // We might have a map expression.
@@ -215,10 +202,10 @@ function canBeEvaluatedOneStep(x: any): boolean {
       } else {
         // Check if it has a `fun` function and an `exp` property.
         return Object.hasOwn(inner, "fun") && typeof inner.fun === "function" &&
-          Object.hasOwn(inner, "exp") && hasDbg(x);
+          Object.hasOwn(inner, "exp");
       }
     } else if (Object.hasOwn(x, "macro")) {
-      return hasDbg(x);
+      return true;
     } else {
       // We have an object but no expression kind matches.
       return false;
@@ -647,8 +634,8 @@ export class Context {
 
       // Push debug info.
 
-      if (exp.dbg.isPrimary) {
-        this.stack = this.stack.push(exp.dbg);
+      if ("dbg" in exp && (<DebuggingInformation> exp.dbg).isPrimary) {
+        this.stack = this.stack.push(<DebuggingInformation> exp.dbg);
       }
 
       if (expIsFragment(exp)) {
@@ -665,7 +652,7 @@ export class Context {
         const compressed = simplifyExpressionsArray(allEvaluated);
 
         if (Array.isArray(compressed)) {
-          ret = { fragment: compressed, dbg: exp.dbg };
+          ret = { fragment: compressed };
         } else {
           ret = compressed;
         }
@@ -698,7 +685,7 @@ export class Context {
 
         if (typeof evaluated === "string") {
           const mapped = await exp.map.fun(evaluated, this);
-          ret = this.doEvaluate(fragmentExp(["", mapped], {}));
+          ret = this.doEvaluate(fragmentExp(["", mapped]));
         } else {
           exp.map.exp = evaluated;
           ret = exp;
@@ -720,7 +707,7 @@ export class Context {
       }
 
       // Pop debug info.
-      if (exp.dbg.isPrimary) {
+      if ("dbg" in exp && (<DebuggingInformation> exp.dbg).isPrimary) {
         this.stack = this.stack.pop();
       }
 
@@ -1162,35 +1149,33 @@ export function jsxDEV(
     : {};
 
   if (macro === "impure") {
-    return impureExp(props.fun, dbg);
+    return impureExp(props.fun);
   } else if (macro === "map") {
-    return mapExp(fragmentExp(expressions(props.children), {}), props.fun, dbg);
+    return mapExp(fragmentExp(expressions(props.children)), props.fun);
   } else if (macro === "lifecycle") {
     return lifecycleExp(
-      fragmentExp(expressions(props.children), {}),
+      fragmentExp(expressions(props.children)),
       props.pre ?? ((_) => {}),
       props.post ?? ((_) => {}),
-      dbg,
     );
   } else if (macro === "exps") {
-    return fragmentExp(expressions(props.x), dbg);
+    return fragmentExp(expressions(props.x));
   } else if (macro === "omnomnom") {
-    return mapExp(fragmentExp(expressions(props.children), {}), () => "", dbg);
+    return mapExp(fragmentExp(expressions(props.children)), () => "");
   } else if (macro === "halt") {
-    return impureExp((ctx) => ctx.halt(), dbg);
+    return impureExp((ctx) => ctx.halt());
   } else if (macro === "loggingLevel") {
     return lifecycleExp(
-      fragmentExp(expressions(props.children), {}),
+      fragmentExp(expressions(props.children)),
       (ctx) => ctx.logLevelStacks.pushLevel(props.level, props.macro),
       (ctx) => ctx.logLevelStacks.popLevel(props.macro),
-      dbg,
     );
   } else if (
     macro === "debug" || macro === "trace" || macro === "info" ||
     macro === "warn" || macro === "error"
   ) {
     return mapExp(
-      fragmentExp(expressions(props.children), {}),
+      fragmentExp(expressions(props.children)),
       (evaled, ctx) => {
         switch (macro) {
           case "debug":
@@ -1211,14 +1196,12 @@ export function jsxDEV(
         }
         return "";
       },
-      dbg,
     );
   } else if (macro === "loggingGroup") {
     return lifecycleExp(
-      fragmentExp(expressions(props.children), {}),
+      fragmentExp(expressions(props.children)),
       (ctx) => (<LoggingBackend> <unknown> ctx.fmt).startGroup(),
       (ctx) => (<LoggingBackend> <unknown> ctx.fmt).endGroup(),
-      dbg,
     );
   } else if (macro === "sequential") {
     let exp: Expression = "";
@@ -1230,7 +1213,7 @@ export function jsxDEV(
     } else if (props.x.length >= 2) {
       const [fst, ...rest] = props.x;
 
-      exp = mapExp(fst, (evaled, _) => fragmentExp([evaled, ...rest], {}), dbg);
+      exp = mapExp(fst, (evaled, _) => fragmentExp([evaled, ...rest]));
     }
 
     return exp;
@@ -1247,11 +1230,11 @@ export function Fragment(
   { children }: { children?: Expression | Expression[] },
 ): Expression {
   if (children === undefined) {
-    return fragmentExp([], {});
+    return fragmentExp([]);
   } else if (Array.isArray(children)) {
-    return fragmentExp(children, {});
+    return fragmentExp(children);
   } else {
-    return fragmentExp([children], {});
+    return fragmentExp([children]);
   }
 }
 
