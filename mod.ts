@@ -38,7 +38,7 @@ export type Expression =
    */
   | string
   | FragmentExpression
-  | ImpureExpression
+  | EffectExpression
   | LifecycleExpression
   | MapExpression
   | MacroExpression;
@@ -50,13 +50,13 @@ export type Expression =
 type FragmentExpression = { fragment: Expression[] };
 
 /**
- * An impure expression maps the evaluation {@linkcode Context} to another
+ * An effect expression maps the evaluation {@linkcode Context} to another
  * expression. The function can also return `null`, signalling that it
  * cannot be evaluated just yet. In that case, it is called again in the
  * next evaluation round.
  */
-type ImpureExpression = {
-  impure:
+type EffectExpression = {
+  effect:
     | ((ctx: Context) => Expression | null)
     | ((ctx: Context) => Promise<Expression | null>);
 };
@@ -80,8 +80,8 @@ type MapExpression = {
   map: {
     exp: Expression;
     fun:
-      | ((evaluated: string, ctx: Context) => Expression)
-      | ((evaluated: string, ctx: Context) => Promise<Expression>);
+      | ((ctx: Context, evaluated: string) => Expression)
+      | ((ctx: Context, evaluated: string) => Promise<Expression>);
   };
 };
 
@@ -99,12 +99,12 @@ function fragmentExp(
   return { fragment: exps };
 }
 
-function impureExp(
+function effectExp(
   fun:
     | ((ctx: Context) => Expression | null)
     | ((ctx: Context) => Promise<Expression | null>),
 ): Expression {
-  return { impure: fun };
+  return { effect: fun };
 }
 
 function lifecycleExp(
@@ -118,8 +118,8 @@ function lifecycleExp(
 function mapExp(
   exp: Expression,
   fun:
-    | ((evaluated: string, ctx: Context) => Expression)
-    | ((evaluated: string, ctx: Context) => Promise<Expression>),
+    | ((ctx: Context, evaluated: string) => Expression)
+    | ((ctx: Context, evaluated: string) => Promise<Expression>),
 ): Expression {
   return {
     map: { exp, fun },
@@ -139,10 +139,10 @@ function expIsFragment(
   return (typeof exp !== "string") && ("fragment" in exp);
 }
 
-function expIsImpure(
+function expIsEffect(
   exp: Expression,
-): exp is ImpureExpression {
-  return (typeof exp !== "string") && ("impure" in exp);
+): exp is EffectExpression {
+  return (typeof exp !== "string") && ("effect" in exp);
 }
 
 function expIsLifecycle(
@@ -179,10 +179,10 @@ function canBeEvaluatedOneStep(x: any): boolean {
       // We might have a fragment expression.
       // Check if the inner value is an array.
       return Array.isArray(x.fragment);
-    } else if (Object.hasOwn(x, "impure")) {
-      // We might have an impure expression.
+    } else if (Object.hasOwn(x, "effect")) {
+      // We might have an effect expression.
       // Check if the inner value is a function.
-      return typeof x.impure === "function";
+      return typeof x.effect === "function";
     } else if (Object.hasOwn(x, "lifecycle")) {
       // We might have a preprocess expression.
       const inner = x.lifecycle;
@@ -288,12 +288,12 @@ export class Context {
   private stack: Stack<DebuggingInformation>;
   // Tracks the current position in the evaluation process.
   private etp: EvaluationTreePositionImpl;
-  // True when evaluation would halt if no impure expression returns non-null.
+  // True when evaluation would halt if no effect expression returns non-null.
   private haveToMakeProgress: boolean;
   // Count the number of evaluation rounds.
   private round: number;
   // To determine whether `haveToMakeProgress` needs to be set after an
-  // evaluation round, we track whether at least one impure expression returned
+  // evaluation round, we track whether at least one effect expression returned
   // non-null in the current round.
   private madeProgressThisRound: boolean;
   // Starts as `false`, switches to `true` when a warning or error is logged.
@@ -413,9 +413,9 @@ export class Context {
   }
 
   /**
-   * When no impure expression makes progress in an evaluation
+   * When no effect expression makes progress in an evaluation
    * round, another round is started, in which this function returns `true`.
-   * If no impure expression makes progress in that round either,
+   * If no effect expression makes progress in that round either,
    * evaluation stops.
    *
    * @returns `true` if progress must be made, `false` otherwise.
@@ -566,7 +566,7 @@ export class Context {
    * Prints a stacktrace, then immediately and faultily terminates evaluation.
    *
    * @returns A dummy Expression so you can write `return ctx.halt()` in
-   * impure or map functions. This function always throws, it never
+   * effect or map functions. This function always throws, it never
    * actually returns a value.
    */
   public halt(): Expression {
@@ -603,6 +603,13 @@ export class Context {
    */
   fmtCode(s: string): string {
     return this.fmt.yellow(s);
+  }
+
+  /**
+   * Styles a URL the same way that macromania styles URLs for logging.
+   */
+  fmtURL(s: string): string {
+    return this.fmt.blue(s);
   }
 
   /**
@@ -660,8 +667,8 @@ export class Context {
         } else {
           ret = compressed;
         }
-      } else if (expIsImpure(exp)) {
-        const unthunk = await exp.impure(this);
+      } else if (expIsEffect(exp)) {
+        const unthunk = await exp.effect(this);
         if (unthunk === null) {
           ret = exp; // Try again next evaluation round.
         } else {
@@ -688,7 +695,7 @@ export class Context {
         this.etp = oldEtp;
 
         if (typeof evaluated === "string") {
-          const mapped = await exp.map.fun(evaluated, this);
+          const mapped = await exp.map.fun(this, evaluated);
           ret = this.doEvaluate(fragmentExp(["", mapped]));
         } else {
           exp.map.exp = evaluated;
@@ -826,7 +833,7 @@ export class Context {
       for (const inner of exp.fragment) {
         this.doLogBlockingExpressions(inner, info);
       }
-    } else if (expIsImpure(exp)) {
+    } else if (expIsEffect(exp)) {
       this.error(``);
       this.error(this.fmtDebuggingInformation(info));
     } else if (expIsLifecycle(exp)) {
@@ -882,7 +889,7 @@ function expressions(children: Children): Expression[] {
 // those would be html elements.
 type MacromaniaIntrinsic =
   | "omnomnom"
-  | "impure"
+  | "effect"
   | "map"
   | "lifecycle"
   | "halt"
@@ -893,9 +900,9 @@ type MacromaniaIntrinsic =
   | "warn"
   | "error"
   | "loggingGroup"
-  | "sequential";
+  | "sequence";
 
-type PropsImpure = {
+type PropsEffect = {
   /**
    * Produce an {@linkcode Expression} from a {@linkcode Context}, or signal
    * that this is currently impossible by returning `null`, causing this
@@ -922,8 +929,8 @@ type PropsMap = {
    * @returns An {@linkcode Expression} to evaluate next.
    */
   fun:
-    | ((evaluated: string, ctx: Context) => Expression)
-    | ((evaluated: string, ctx: Context) => Promise<Expression>);
+    | ((ctx: Context, evaluated: string) => Expression)
+    | ((ctx: Context, evaluated: string) => Promise<Expression>);
 };
 
 type PropsLifecycle = {
@@ -993,7 +1000,7 @@ type PropsLoggingGroup = {
   children?: Children;
 };
 
-type PropsSequential = {
+type PropsSequence = {
   /**
    * The expressions to evaluated sequentially.
    */
@@ -1016,7 +1023,7 @@ export declare namespace JSX {
      * Create an {@linkcode Expression} dependent on the current
      * {@linkcode Context}, and evaluate it.
      */
-    impure: PropsImpure;
+    effect: PropsEffect;
     /**
      * Evaluate some children and then create a new {@linkcode Expression} from
      * the resulting string and the current {@linkcode Context}.
@@ -1072,7 +1079,7 @@ export declare namespace JSX {
     /**
      * Fully evaluates each expression before moving on to the next.
      */
-    sequential: PropsSequential;
+    sequence: PropsSequence;
   }
 
   interface ElementAttributesProperty {
@@ -1139,8 +1146,8 @@ export function jsxDEV(
     )
     : {};
 
-  if (macro === "impure") {
-    return impureExp(props.fun);
+  if (macro === "effect") {
+    return effectExp(props.fun);
   } else if (macro === "map") {
     return mapExp(fragmentExp(expressions(props.children)), props.fun);
   } else if (macro === "lifecycle") {
@@ -1152,7 +1159,7 @@ export function jsxDEV(
   } else if (macro === "omnomnom") {
     return mapExp(fragmentExp(expressions(props.children)), () => "");
   } else if (macro === "halt") {
-    return impureExp((ctx) => ctx.halt());
+    return effectExp((ctx) => ctx.halt());
   } else if (macro === "loggingLevel") {
     return lifecycleExp(
       fragmentExp(expressions(props.children)),
@@ -1165,7 +1172,7 @@ export function jsxDEV(
   ) {
     return mapExp(
       fragmentExp(expressions(props.children)),
-      (evaled, ctx) => {
+      (ctx, evaled) => {
         switch (macro) {
           case "debug":
             ctx.debug(evaled);
@@ -1192,7 +1199,7 @@ export function jsxDEV(
       (ctx) => (<LoggingBackend> <unknown> ctx.fmt).startGroup(),
       (ctx) => (<LoggingBackend> <unknown> ctx.fmt).endGroup(),
     );
-  } else if (macro === "sequential") {
+  } else if (macro === "sequence") {
     let exp: Expression = "";
 
     if (props.x.length === 0) {
@@ -1202,7 +1209,7 @@ export function jsxDEV(
     } else if (props.x.length >= 2) {
       const [fst, ...rest] = props.x;
 
-      exp = mapExp(fst, (evaled, _) => fragmentExp([evaled, ...rest]));
+      exp = mapExp(fst, (_, evaled) => fragmentExp([evaled, ...rest]));
     }
 
     return exp;
@@ -1227,4 +1234,45 @@ export function Fragment(
   }
 }
 
-// TODO don't store DebugInformation with ETPs; a stack of indexes suffices.
+/*
+
+# Documents on the Inevitable Macromania Website
+
+Macromania is a typescript-embedded domain-specific language for creating
+strings, using [jsx syntax](https://en.wikipedia.org/wiki/JSX_(JavaScript)). You
+can think of it as a highly expressive but completely unopinionated templating
+language. It takes inspiration from lisp-like macro expansion and
+[TeX](https://en.wikipedia.org/wiki/TeX), but the design ensures meaningful
+error reporting, principled interaction between stateful macros, and static
+typing for the input expressions.
+
+Demos: willowprotocol.org, gwil.garden, phd thesis
+
+## For Users
+
+- tutorial: using macromania
+  - tsx setup
+  - evaluating expressions
+  - tsx (in general and for macromania in particular)
+  - authoring stateless macros
+  - (configuring logging?)
+- tutorial: scientific writing
+- guide: macromania as a static-site generator
+- reference
+  - selected parts of the API
+  - selected builtins
+
+## For Package Authors
+
+- explanation: stateful macros
+- tutorial: walking through writing an example package
+- guide: authoring delightful packages
+  - configuration, logging, documentation
+- reference
+
+## Other
+
+- inner workings
+- future of macromania
+
+*/

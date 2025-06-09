@@ -17,7 +17,7 @@ Deno.test("etp simple", async () => {
     { children, ptr }: { children?: Children; ptr: EtpPointer },
   ): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           ptr.ptr = ctx.getEvaluationTreePosition();
           return <>{children}</>;
@@ -133,7 +133,7 @@ Deno.test("etp delayed", async () => {
     { children, ptr }: { children?: Children; ptr: EtpPointer },
   ): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           ptr.ptr = ctx.getEvaluationTreePosition();
           return <>{children}</>;
@@ -151,7 +151,7 @@ Deno.test("etp delayed", async () => {
   const _got = await ctx.evaluate(
     <SaveEtp ptr={parent}>
       <SaveEtp ptr={child1}></SaveEtp>
-      <impure
+      <effect
         fun={(ctx) => {
           if (ctx.mustMakeProgress()) {
             return <SaveEtp ptr={child2}></SaveEtp>;
@@ -178,7 +178,7 @@ Deno.test("etp map", async () => {
     { children, ptr }: { children?: Children; ptr: EtpPointer },
   ): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           ptr.ptr = ctx.getEvaluationTreePosition();
           return <>{children}</>;
@@ -198,7 +198,7 @@ Deno.test("etp map", async () => {
     <SaveEtp ptr={parent}>
       <SaveEtp ptr={child1}></SaveEtp>
       <map
-        fun={(_, _ctx) => {
+        fun={(_ctx, _) => {
           return <SaveEtp ptr={child2a}></SaveEtp>;
         }}
       >

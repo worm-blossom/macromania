@@ -193,7 +193,7 @@ Deno.test("counter macro", async () => {
 
   function Count(): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           const oldCount = getCount(ctx);
           setCount(ctx, oldCount + 1);
@@ -213,8 +213,8 @@ Deno.test("counter macro", async () => {
 });
 
 /*
-This example introduced a new kind of expression: an _impure_ expression is an
-object with a single field `impure`, whose value is a function that takes a
+This example introduced a new kind of expression: an _effect_ expression is an
+object with a single field `effect`, whose value is a function that takes a
 `Context` and returns an expression. This function can read to and write from
 the `Context` via getters and setters created by the `createSubstate` function.
 The same `Context` is passed to separate invocations of the `Count` macro,
@@ -224,7 +224,7 @@ invocations.
 
 /*
 Impure expressions are mostly used as an internal representation for Macromania.
-Macro authors would typically use the `impure` intrinsic for creating them; here
+Macro authors would typically use the `effect` intrinsic for creating them; here
 is an example where we build a simple system of definitions and references:
 */
 Deno.test("defs and refs", async () => {
@@ -240,7 +240,7 @@ Deno.test("defs and refs", async () => {
       getDefs(ctx).set(name, link);
       return "";
     };
-    return <impure fun={updateState} />;
+    return <effect fun={updateState} />;
   }
 
   // Given a registered name, outputs the associated link.
@@ -256,7 +256,7 @@ Deno.test("defs and refs", async () => {
         return "";
       }
     };
-    return <impure fun={fun} />;
+    return <effect fun={fun} />;
   }
 
   const ctx1 = new Context();
@@ -288,7 +288,7 @@ Deno.test("defs and refs", async () => {
   assertEquals(got2, null);
 
   /*
-  We can fix this by returning `null` from the impure function in the Ref macro
+  We can fix this by returning `null` from the effect function in the Ref macro
   if the name has not been defined yet. Returning `null` causes the
   expression to be skipped and schedules it for later reevaluation.
   */
@@ -304,7 +304,7 @@ Deno.test("defs and refs", async () => {
         return null;
       }
     };
-    return <impure fun={fun} />;
+    return <effect fun={fun} />;
   }
 
   const ctx3 = new Context();
@@ -353,7 +353,7 @@ Deno.test("defs and refs", async () => {
         }
       }
     };
-    return <impure fun={fun} />;
+    return <effect fun={fun} />;
   }
 
   const ctx5 = new Context();
@@ -388,7 +388,7 @@ Deno.test("nested markdown sections", async () => {
     const fun = (ctx: Context) => {
       return <>{"#".repeat(getDepth(ctx))} {children}{"\n"}</>;
     };
-    return <impure fun={fun} />;
+    return <effect fun={fun} />;
   }
 
   // Render the markup for a section.
@@ -429,7 +429,7 @@ Bye!
 
 /*
 Note that the lifecycle functions get called _every time_ the wrapped expression
-is evaluated; this gracefully handles wrapped impure expressions that require
+is evaluated; this gracefully handles wrapped effect expressions that require
 several evaluation attempts.
 */
 
@@ -445,7 +445,7 @@ turn it into an arbitrary new expression.
 */
 Deno.test("yell", async () => {
   function Yell({ children }: { children: Expression }): Expression {
-    const fun = (evaled: string, ctx: Context) => evaled.toUpperCase();
+    const fun = (ctx: Context, evaled: string) => evaled.toUpperCase();
     return <map fun={fun}>{children}</map>;
   }
 
@@ -541,7 +541,7 @@ Deno.test("exps", async () => {
 //////////////////
 
 /*
-The `evaluate` method of `Context` is asynchronous. The functions of any impure, lifecycle or map expression can be asynchronous and everything still works!
+The `evaluate` method of `Context` is asynchronous. The functions of any effect, lifecycle or map expression can be asynchronous and everything still works!
 */
 
 import { encodeHex } from "@std/encoding";
@@ -549,7 +549,7 @@ Deno.test("async map", async () => {
   function Sha256({ children }: { children: Expression }): Expression {
     return (
       <map
-        fun={async (evaled, ctx) => {
+        fun={async (ctx, evaled) => {
           // Yes, for some mysterious reason, WebCrypto hash functions are async.
           const rawDigest = await crypto.subtle.digest(
             "SHA-256",
@@ -584,21 +584,21 @@ Deno.test("sequential async fragments", async () => {
   let counter = 0;
   const got = await ctx.evaluate(
     <>
-      <impure
+      <effect
         fun={async (ctx) => {
           await sleep(1); // really fast
           counter += 1;
           return `${counter}`;
         }}
       />
-      <impure
+      <effect
         fun={async (ctx) => {
           await sleep(99); // really slow
           counter += 1;
           return `${counter}`;
         }}
       />
-      <impure
+      <effect
         fun={async (ctx) => {
           await sleep(50); // in between
           counter += 1;

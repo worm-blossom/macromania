@@ -14,10 +14,10 @@ import { newStack, type Stack } from "../stack.ts";
 Deno.test("mustMakeProgress regression", async () => {
   function A(): Expression {
     return (
-      <impure
+      <effect
         fun={(_) => {
           return (
-            <impure
+            <effect
               fun={(ctx) => {
                 if (ctx.mustMakeProgress()) {
                   return "Hi!";
@@ -79,7 +79,7 @@ Deno.test("stack simple", async () => {
 
   function Internal({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return children;
@@ -109,7 +109,7 @@ Deno.test("stack 2", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return <Internal>{children}</Internal>;
@@ -122,7 +122,7 @@ Deno.test("stack 2", async () => {
 
   function Internal({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           return children;
         }}
@@ -155,7 +155,7 @@ Deno.test("stack 3", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           if (i < 2) {
             i += 1;
@@ -172,7 +172,7 @@ Deno.test("stack 3", async () => {
 
   function Internal({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(_: Context) => {
           return children;
         }}
@@ -203,7 +203,7 @@ Deno.test("stack 4", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return <Internal>{children}</Internal>;
@@ -216,7 +216,7 @@ Deno.test("stack 4", async () => {
 
   function Internal({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           return children;
         }}
@@ -243,7 +243,7 @@ Deno.test("stack 5", async () => {
   function A({ children }: { children: Expression }): Expression {
     return (
       <map
-        fun={(_: string, ctx: Context) => {
+        fun={(ctx: Context, _: string) => {
           return <C>hi</C>;
         }}
       >
@@ -254,7 +254,7 @@ Deno.test("stack 5", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return children;
@@ -278,7 +278,7 @@ Deno.test("stack 5", async () => {
 Deno.test("stack 6", async () => {
   function A({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           return <C>hi</C>;
         }}
@@ -288,7 +288,7 @@ Deno.test("stack 6", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return children;
@@ -316,7 +316,7 @@ Deno.test("stack 7", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return children;
@@ -341,7 +341,7 @@ Deno.test("stack 8", async () => {
   function A({ children }: { children: Expression }): Expression {
     return (
       <map
-        fun={(_: string, ctx: Context) => {
+        fun={(ctx: Context, _: string) => {
           return <C>hi</C>;
         }}
       >
@@ -356,7 +356,7 @@ Deno.test("stack 8", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return <Internal>{children}</Internal>;
@@ -369,7 +369,7 @@ Deno.test("stack 8", async () => {
 
   function Internal({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           return children;
         }}
@@ -402,7 +402,7 @@ Deno.test("stack 9", async () => {
 
   function C({ children }: { children: Expression }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx: Context) => {
           stack = ctx.getDebuggingStack();
           return children;
@@ -433,7 +433,7 @@ Deno.test("array combines string correctly with delayed invocations", async () =
   function A() {
     let i = 0;
     return (
-      <impure
+      <effect
         fun={(ctx) => {
           if (i < 3) {
             i += 1;
@@ -449,7 +449,7 @@ Deno.test("array combines string correctly with delayed invocations", async () =
   function B() {
     let i = 0;
     return (
-      <impure
+      <effect
         fun={(ctx) => {
           if (i < 2) {
             i += 1;
@@ -465,7 +465,7 @@ Deno.test("array combines string correctly with delayed invocations", async () =
   function C() {
     let i = 0;
     return (
-      <impure
+      <effect
         fun={(ctx) => {
           if (i < 1) {
             i += 1;
@@ -502,10 +502,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-Deno.test("async impure", async () => {
+Deno.test("async effect", async () => {
   function Foo(): Expression {
     return (
-      <impure
+      <effect
         fun={async (ctx) => {
           await delay(10);
           return "hi!";
@@ -523,7 +523,7 @@ Deno.test("async lifecycle", async () => {
   function A() {
     let i = 0;
     return (
-      <impure
+      <effect
         fun={(ctx) => {
           if (i < 1) {
             i += 1;
@@ -688,22 +688,22 @@ Deno.test("lifecycle", async () => {
   })();
 });
 
-Deno.test("sequential", async () => {
+Deno.test("sequence", async () => {
   await (async () => {
     const ctx = new Context();
-    const got = await ctx.evaluate(<sequential x={[]} />);
+    const got = await ctx.evaluate(<sequence x={[]} />);
     assertEquals(got, "");
   })();
 
   await (async () => {
     const ctx = new Context();
-    const got = await ctx.evaluate(<sequential x={["foo"]} />);
+    const got = await ctx.evaluate(<sequence x={["foo"]} />);
     assertEquals(got, "foo");
   })();
 
   await (async () => {
     const ctx = new Context();
-    const got = await ctx.evaluate(<sequential x={["foo", "bar", "baz"]} />);
+    const got = await ctx.evaluate(<sequence x={["foo", "bar", "baz"]} />);
     assertEquals(got, "foobarbaz");
   })();
 
@@ -712,23 +712,23 @@ Deno.test("sequential", async () => {
     let first = "a";
 
     const got = await ctx.evaluate(
-      <sequential
+      <sequence
         x={[
-          <impure
+          <effect
             fun={async (ctx) => {
               await delay(40);
               first = "b";
               return "b";
             }}
           />,
-          <impure
+          <effect
             fun={async (ctx) => {
               first = "c";
               await delay(20);
               return "c";
             }}
           />,
-          <impure
+          <effect
             fun={(ctx) => {
               first = "d";
               return "d";
@@ -749,12 +749,12 @@ Deno.test("createScopedState", async () => {
     >(() => "a");
 
     function GetState(): Expression {
-      return <impure fun={(ctx) => getState(ctx)} />;
+      return <effect fun={(ctx) => getState(ctx)} />;
     }
 
     function SetState({ s }: { s: string }): Expression {
       return (
-        <impure
+        <effect
           fun={(ctx) => {
             setState(ctx, s);
             return "";
@@ -773,7 +773,7 @@ Deno.test("createScopedState", async () => {
           <GetState />
           <SetState s="c" />
           <GetState />
-          <impure
+          <effect
             fun={(ctx) => {
               if (ctx.mustMakeProgress()) {
                 return <GetState />;
@@ -812,7 +812,7 @@ Deno.test("createConfig", async () => {
     const ctx = new Context();
     const got = await ctx.evaluate(
       <>
-        <impure
+        <effect
           fun={(ctx) => {
             assertEquals(getConfig(ctx).a, 0);
             assertEquals(getConfig(ctx).b, 1);
@@ -821,7 +821,7 @@ Deno.test("createConfig", async () => {
         />
 
         <ConfigMacro a={2}>
-          <impure
+          <effect
             fun={(ctx) => {
               assertEquals(getConfig(ctx).a, 2);
               assertEquals(getConfig(ctx).b, 1);
@@ -830,7 +830,7 @@ Deno.test("createConfig", async () => {
           />
 
           <ConfigMacro a={3} b={4}>
-            <impure
+            <effect
               fun={(ctx) => {
                 assertEquals(getConfig(ctx).a, 3);
                 assertEquals(getConfig(ctx).b, 4);
@@ -839,7 +839,7 @@ Deno.test("createConfig", async () => {
             />
           </ConfigMacro>
 
-          <impure
+          <effect
             fun={(ctx) => {
               assertEquals(getConfig(ctx).a, 2);
               assertEquals(getConfig(ctx).b, 1);
@@ -849,7 +849,7 @@ Deno.test("createConfig", async () => {
         </ConfigMacro>
 
         <ConfigMacro b={5}>
-          <impure
+          <effect
             fun={(ctx) => {
               assertEquals(getConfig(ctx).a, 0);
               assertEquals(getConfig(ctx).b, 5);
@@ -858,7 +858,7 @@ Deno.test("createConfig", async () => {
           />
         </ConfigMacro>
 
-        <impure
+        <effect
           fun={(ctx) => {
             assertEquals(getConfig(ctx).a, 0);
             assertEquals(getConfig(ctx).b, 1);

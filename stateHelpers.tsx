@@ -15,7 +15,7 @@ export function doCreateScopedState<S>(
 
   function StateScope({ children }: { children?: Children }): Expression {
     return (
-      <impure
+      <effect
         fun={(ctx) => {
           let parentState = get(ctx);
           let myState = initial(parentState);
@@ -62,7 +62,7 @@ export function doCreateConfig<C extends Record<string, any>>(
   function ConfigScope(props: C | { children?: Children }): Expression {
     return (
       <StateScope>
-        <impure
+        <effect
           fun={(ctx) => {
             const state = get(ctx);
 

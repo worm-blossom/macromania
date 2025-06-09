@@ -257,7 +257,7 @@ Deno.test("logging macro-specific levels isolated regression 1", async () => {
 
   function Count(): Expression {
     return (
-      <impure
+      <effect
         fun={(_) => {
           counter += 1;
           return `${counter}`;
@@ -359,7 +359,7 @@ Deno.test("logging macro-specific levels isolated regression 2", async () => {
 
   function Count(): Expression {
     return (
-      <impure
+      <effect
         fun={(_) => {
           counter += 1;
           return `${counter}`;
@@ -463,7 +463,7 @@ Deno.test("logging macro-specific levels isolated regression 3", async () => {
 
   function Count(): Expression {
     return (
-      <impure
+      <effect
         fun={(_) => {
           counter += 1;
           return `${counter}`;
@@ -567,7 +567,7 @@ Deno.test("logging macro-specific levels isolated regression 4", async () => {
 
   function Count(): Expression {
     return (
-      <impure
+      <effect
         fun={(_) => {
           counter += 1;
           return `${counter}`;
@@ -673,7 +673,7 @@ Deno.test("logging macro-specific levels isolated regression 5", async () => {
 
   function Count(): Expression {
     return (
-      <impure
+      <effect
         fun={(_) => {
           counter += 1;
           return `${counter}`;
@@ -779,7 +779,7 @@ Deno.test("logging macro-specific levels", async () => {
 
   function Count(): Expression {
     return (
-      <impure
+      <effect
         fun={(_) => {
           counter += 1;
           return `${counter}`;
