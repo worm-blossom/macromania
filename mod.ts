@@ -11,10 +11,16 @@
 
 */
 
-import type {
-  LoggingBackend,
-  LoggingFormatter,
-  LogLevel,
+import {
+  type LoggingBackend,
+  type LoggingFormatter,
+  logGt,
+  logGte,
+  type LogLevel,
+  logLt,
+  logLte,
+  logMax,
+  logMin,
 } from "./loggingBackend.ts";
 import { newStack, type Stack } from "./stack.ts";
 import { DefaultLogger } from "./defaultLogger.ts";
@@ -24,6 +30,17 @@ import {
   EvaluationTreePositionImpl,
 } from "./evaluationTreePosition.ts";
 import { doCreateConfig, doCreateScopedState } from "./stateHelpers.tsx";
+
+export {
+  type EvaluationTreePosition,
+  logGt,
+  logGte,
+  type LogLevel,
+  logLt,
+  logLte,
+  logMax,
+  logMin,
+};
 
 /**
  * An expression, to be evaluated to a string.
@@ -438,8 +455,11 @@ export class Context {
     return this.warnedOrWorseYet;
   }
 
+  /**
+   * Log a message at the given {@linkcode LogLevel}.
+   */
   // deno-lint-ignore no-explicit-any
-  private log(level: LogLevel, ...data: any[]) {
+  public log(level: LogLevel, ...data: any[]) {
     if (level === "warn" || level === "error") {
       this.warnedOrWorseYet = true;
     }
@@ -894,6 +914,7 @@ type MacromaniaIntrinsic =
   | "lifecycle"
   | "halt"
   | "loggingLevel"
+  | "log"
   | "debug"
   | "trace"
   | "info"
@@ -956,6 +977,17 @@ type PropsLoggingLevel = {
    * The expressions to evaluate using the new logging level.
    */
   children: Children;
+};
+
+type PropsLog = {
+  /**
+   * The logging level at which to log.
+   */
+  level: LogLevel;
+  /**
+   * The expressions to evaluate to a string and to then log at the given logging level.
+   */
+  children?: Children;
 };
 
 type PropsDebug = {
@@ -1043,6 +1075,11 @@ export declare namespace JSX {
      * Print a stacktrace and halt evaluation.
      */
     halt: PropsHalt;
+    /**
+     * Evaluate the children and log the resulting string at the given [`LogLevel`].
+     * This intrinsic itself evaluates to the empty string.
+     */
+    log: PropsLog;
     /**
      * Evaluate the children and log the resulting string at logging level `"debug"`.
      * This intrinsic itself evaluates to the empty string.
@@ -1166,7 +1203,16 @@ export function jsxDEV(
       (ctx) => ctx.logLevelStacks.pushLevel(props.level, props.macro),
       (ctx) => ctx.logLevelStacks.popLevel(props.macro),
     );
-  } else if (
+  } else if (macro === "log") {
+    return mapExp(
+      fragmentExp(expressions(props.children)),
+      (ctx, evaled) => {
+        ctx.log(props.level, evaled);
+        return "";
+      },
+    );
+  }
+  if (
     macro === "debug" || macro === "trace" || macro === "info" ||
     macro === "warn" || macro === "error"
   ) {

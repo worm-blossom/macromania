@@ -45,30 +45,36 @@ import type { LoggingBackend } from "./loggingBackend.ts";
  * The default logger used by macromania logs to the console.
  */
 export class DefaultLogger implements LoggingBackend, LoggingFormatter {
-  constructor() {}
+  groupDepth: number;
+  constructor() {
+    this.groupDepth = 0;
+  }
 
   // deno-lint-ignore no-explicit-any
   log(level: LogLevel, ...data: any[]): void {
+    const indentation = "".padStart(2 * this.groupDepth, " ");
     switch (level) {
+      case "ignore":
+        return console.log(this.dim("[nope] "), indentation, ...data);
       case "debug":
-        return console.debug(data);
+        return console.log(this.magenta("[debug]"), indentation, ...data);
       case "trace":
-        return console.trace(data);
+        return console.log(this.brightGreen("[trace]"), indentation, ...data);
       case "info":
-        return console.info(data);
+        return console.log(this.blue("[blue] "), indentation, ...data);
       case "warn":
-        return console.warn(data);
+        return console.log(this.yellow("[warn] "), indentation, ...data);
       case "error":
-        return console.error(data);
+        return console.log(this.red("[error]"), indentation, ...data);
     }
   }
 
   startGroup() {
-    console.group();
+    this.groupDepth += 1;
   }
 
   endGroup() {
-    console.groupEnd();
+    this.groupDepth -= 1;
   }
 
   bgBlack(s: string): string {
