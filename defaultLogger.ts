@@ -61,7 +61,7 @@ export class DefaultLogger implements LoggingBackend, LoggingFormatter {
       case "trace":
         return console.log(this.brightGreen("[trace]"), indentation, ...data);
       case "info":
-        return console.log(this.blue("[blue] "), indentation, ...data);
+        return console.log(this.blue("[info] "), indentation, ...data);
       case "warn":
         return console.log(this.yellow("[warn] "), indentation, ...data);
       case "error":
