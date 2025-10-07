@@ -476,6 +476,25 @@ export class Context {
   }
 
   /**
+   * Adds an empty line to the log. The logging level will not be indicated visually, but no empty line will be logged if the logging level is too low.
+   */
+  logEmptyLine(level: LogLevel) {
+    if (level === "warn" || level === "error") {
+      this.warnedOrWorseYet = true;
+    }
+
+    const tos = this.stack.peek();
+    if (
+      this.logLevelStacks.shouldLog(
+        level,
+        tos === undefined ? undefined : tos.macroFun,
+      )
+    ) {
+      (<LoggingBackend> <unknown> this.fmt).logEmptyLine();
+    }
+  }
+
+  /**
    * Log a message at {@linkcode LogLevel} `"debug"`.
    */
   // deno-lint-ignore no-explicit-any
@@ -562,6 +581,16 @@ export class Context {
     const tos = this.stack.peek();
     if (tos !== undefined) {
       this.error(this.fmtDebuggingInformation(tos));
+    }
+  }
+
+  /**
+   * Log the current macro call at the given {@linkcode LogLevel}.
+   */
+  currentLog(level: LogLevel) {
+    const tos = this.stack.peek();
+    if (tos !== undefined) {
+      this.log(level, this.fmtDebuggingInformation(tos));
     }
   }
 
@@ -908,7 +937,9 @@ function expressions(children: Children): Expression[] {
 // Intrinsic elements are those with a lowercase name, in React
 // those would be html elements.
 type MacromaniaIntrinsic =
+  | "xs"
   | "omnomnom"
+  | "fragment"
   | "effect"
   | "map"
   | "lifecycle"
@@ -922,6 +953,17 @@ type MacromaniaIntrinsic =
   | "error"
   | "loggingGroup"
   | "sequence";
+
+type PropsXs = {
+  x: Children;
+};
+
+type PropsFragment = {
+  /**
+   * The array of Expressions to evaluate and concatenate.
+   */
+  x: Expression[];
+};
 
 type PropsEffect = {
   /**
@@ -1040,17 +1082,22 @@ type PropsSequence = {
 };
 
 export declare namespace JSX {
-  // All jsx evaluates to a number.
   // https://devblogs.microsoft.com/typescript/announcing-typescript-5-1-beta/#decoupled-type-checking-between-jsx-elements-and-jsx-tag-types
   // https://www.typescriptlang.org/docs/handbook/jsx.html#the-jsx-result-type
   type Element = Expression;
-
-  // export type ElementType = number;
 
   // Configure the intrinsic elements and their props.
   // https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
   // https://www.typescriptlang.org/docs/handbook/jsx.html#attribute-type-checking
   interface IntrinsicElements {
+    /**
+     * Convert the given `Children` (a single `Expression`, an array of `Expression`s, or `undefined`) into an expression.
+     */
+    xs: PropsXs;
+    /**
+     * Evaluate and concatenate some expressions (same as a fragment, i.e., `<>bla</>`).
+     */
+    fragment: PropsFragment;
     /**
      * Create an {@linkcode Expression} dependent on the current
      * {@linkcode Context}, and evaluate it.
@@ -1183,7 +1230,17 @@ export function jsxDEV(
     )
     : {};
 
-  if (macro === "effect") {
+  if (macro === "xs") {
+    if (props.x === undefined) {
+      return "";
+    } else if (Array.isArray(props.x)) {
+      return fragmentExp(props.x);
+    } else {
+      return props.x;
+    }
+  } else if (macro === "fragment") {
+    return fragmentExp(props.x);
+  } else if (macro === "effect") {
     return effectExp(props.fun);
   } else if (macro === "map") {
     return mapExp(fragmentExp(expressions(props.children)), props.fun);

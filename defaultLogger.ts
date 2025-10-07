@@ -69,6 +69,10 @@ export class DefaultLogger implements LoggingBackend, LoggingFormatter {
     }
   }
 
+  logEmptyLine(): void {
+    return console.log();
+  }
+
   startGroup() {
     this.groupDepth += 1;
   }

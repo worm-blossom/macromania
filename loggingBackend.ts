@@ -83,6 +83,11 @@ export interface LoggingBackend {
   log(level: LogLevel, ...data: any[]): void;
 
   /**
+   * Adds an empty line to the log.
+   */
+  logEmptyLine(): void;
+
+  /**
    * Starts grouping the presentation of the next {@linkcode log} calls until the next call to {@linkcode endGroup}.
    */
   startGroup(): void;
