@@ -1,5 +1,9 @@
-import { Children, Context, Expression } from "macromaniajsx/jsx-dev-runtime";
-import { LoggingBackend, LogLevel } from "../loggingBackend.ts";
+import {
+  type Children,
+  Context,
+  type Expression,
+} from "macromaniajsx/jsx-dev-runtime";
+import type { LoggingBackend, LogLevel } from "../loggingBackend.ts";
 import { assertEquals } from "@std/assert/assert-equals";
 
 class TestLogger implements LoggingBackend {

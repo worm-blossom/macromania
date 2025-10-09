@@ -1,11 +1,11 @@
 /**
  * Different logging levels, in ascending order of priority.
  *
- * - `ignore`: Never logged (I mean, you *can* configure things to log these, but that isn't the intention).
+ * - `ignore`: Never logged (well, you *can* configure things to log these, but that isn't the intention).
  * - `debug`: Temporarily added logging calls for debugging. Should be removed before release.
  * - `trace`: Information about the flow of logic in some code.
- * - `info`: Interesting but non-critical, user-facing information.
- * - `warn`: Inform about recoverable but undesirable state.
+ * - `info`: Interesting but non-critical user-facing information.
+ * - `warn`: Information about recoverable but undesirable state.
  * - `error`: Information about an irrecoverable fault.
  */
 export type LogLevel = "ignore" | "debug" | "trace" | "info" | "warn" | "error";
@@ -73,35 +73,54 @@ export function logMax(fst: LogLevel, snd: LogLevel): LogLevel {
 }
 
 /**
- * The interface we require for the logging backend.
+ * A backend for all logging calls happening in some {@linkcode Context}.
+ *
+ * Some examples of possible implementations of this interface:
+ *
+ * - logging to the console (this is what the default backend provided by Macromania does),
+ * - logging to a file,
+ * - HTML-formatted logging to a file, or
+ * - logging to a json array of information.
  */
 export interface LoggingBackend {
   /**
-   * Logs some data at the given {@linkcode LogLevel}.
+   * Log some data at a given {@linkcode LogLevel}.
    */
   // deno-lint-ignore no-explicit-any
   log(level: LogLevel, ...data: any[]): void;
 
   /**
-   * Adds an empty line to the log.
+   * Add an empty line to the log.
    */
   logEmptyLine(): void;
 
   /**
-   * Starts grouping the presentation of the next {@linkcode log} calls until the next call to {@linkcode endGroup}.
+   * Start grouping the presentation of the next {@linkcode LoggingBackend.log | log} calls until the next call to {@linkcode LoggingBackend.endGroup | endGroup}.
    */
   startGroup(): void;
 
   /**
-   * Ends the grouping introduced by the previous call to {@linkcode startGroup}.
+   * End the grouping introduced by the previous call to {@linkcode LoggingBackend.startGroup | startGroup}.
    */
   endGroup(): void;
 }
 
 /**
- * Test
+ * Provides methods for styling strings for logging. Macro developers can access the {@linkcode LoggingFormatter} associated with the evaluating {@linkcode Context} in effectful macros via {@linkcode Context.prototype.fmt | Context.fmt}.
  *
- * @public
+ * ```ts
+ * function YellowOnYellow(): Expression {
+  return (
+    <effect
+      fun={(ctx) => {
+        return <warn>{
+          ctx.fmt.yellow(ctx.fmt.bgBrightYellow("oh no"))
+        }</warn>;
+      }}
+    />
+  );
+}
+ * ```
  */
 export interface LoggingFormatter {
   /**

@@ -1,11 +1,20 @@
 import { newStack, type Stack } from "./stack.ts";
 
+/**
+ * An opaque value associated with each expression, which can be used for pairwise comparisons of the source code position of expressions.
+ *
+ * Obtained via the {@linkcode Context.prototype.getEvaluationTreePosition | Context.getEvaluationTreePosition} method.
+ */
 export class EvaluationTreePosition {
+  /** @ignored */
   protected theDepth: number;
+  /** @ignored */
   protected stack: Stack<number>; // index in parent
 
   /**
-   * Creates a new root {@linkcode EvaluationTreePosition}.
+   * Create a new root {@linkcode EvaluationTreePosition}.
+   *
+   * @ignored
    */
   protected constructor() {
     this.theDepth = 0;
@@ -13,14 +22,14 @@ export class EvaluationTreePosition {
   }
 
   /**
-   * Returns the depth in the tree (root has depth `0`, other nodes have depth of parent plus `1`).
+   * Return the depth in the tree (root has depth `0`, other expressions have depth of parent plus `1`) at which the expression was written in the source.
    */
   depth(): number {
     return this.theDepth;
   }
 
   /**
-   * Returns the index of this node in its parent node. Returns `-1` when called on the root node.
+   * Return the index of this expression in its parent expression. Returns `-1` when called on the root expression.
    * Siblings with a greater `indexInParent` appear later in the source code than those with a lesser `indexInParent`.
    */
   indexInParent(): number {
@@ -34,7 +43,7 @@ export class EvaluationTreePosition {
   }
 
   /**
-   * Returns whether this is equal to another {@linkcode EvaluationTreePosition} (i.e., they refer to the same node).
+   * Return whether this is equal to another {@linkcode EvaluationTreePosition} (i.e., whether both they refer to the same syntax tree node).
    */
   equals(other: EvaluationTreePosition): boolean {
     if (this.theDepth !== other.theDepth) {
@@ -45,7 +54,7 @@ export class EvaluationTreePosition {
   }
 
   /**
-   * Returns whether this node is an ancestor of another node (i.e., whether this macro call contains the other one). This method is reflexive, a node is its own ancestor. Use {@linkcode isStrictAncestorOf} to exclude reflexivity.
+   * Return whether this expression is an ancestor of another expression (i.e., whether this macro call contains the other one). This method is reflexive, an expression is its own ancestor. Use {@linkcode EvaluationTreePosition.isStrictAncestorOf} to exclude reflexivity.
    */
   isAncestorOf(other: EvaluationTreePosition): boolean {
     const dca = this.deepestCommonAncestor(other);
@@ -53,28 +62,28 @@ export class EvaluationTreePosition {
   }
 
   /**
-   * Returns whether this node is an ancestor of another node but not equal to it.
+   * Return whether this expression is an ancestor of another expression but not equal to it.
    */
   isStrictAncestorOf(other: EvaluationTreePosition): boolean {
     return this.isAncestorOf(other) && !this.equals(other);
   }
 
   /**
-   * Returns whether this node is a descendant of another node (i.e., whether this macro call is contained in the other one). This method is reflexive, a node is its own descendant. Use {@linkcode isStrictDescendantOf} to exclude reflexivity.
+   * Return whether this expression is a descendant of another expression (i.e., whether this macro call is contained in the other one). This method is reflexive, an expression is its own descendant. Use {@linkcode EvaluationTreePosition.isStrictDescendantOf} to exclude reflexivity.
    */
   isDescendantOf(other: EvaluationTreePosition): boolean {
     return other.isAncestorOf(this);
   }
 
   /**
-   * Returns whether this node is a descendant of another node but not equal to it.
+   * Return whether this expression is a descendant of another expression but not equal to it.
    */
   isStrictDescendantOf(other: EvaluationTreePosition): boolean {
     return other.isStrictAncestorOf(this);
   }
 
   /**
-   * Returns whether this node occurs earlier in the AST than another node (or is equal to it).
+   * Return whether this expression occurs earlier in the source code than another expression (or is equal to it).
    */
   isEarlierThan(other: EvaluationTreePosition): boolean {
     const dca = this.deepestCommonAncestor(other);
@@ -103,28 +112,30 @@ export class EvaluationTreePosition {
   }
 
   /**
-   * Returns whether this node occurs strictly earlier in the AST than another node (i.e., it is *not* equal to the other node).
+   * Return whether this expression occurs *strictly* earlier in the source code than another expression (i.e., it is *not* equal to the other expression).
    */
   isStrictlyEarlierThan(other: EvaluationTreePosition): boolean {
     return this.isEarlierThan(other) && !this.equals(other);
   }
 
   /**
-   * Returns whether this node occurs later in the AST than another node (or is equal to it).
+   * Return whether this expression occurs later in the source code than another expression (or is equal to it).
    */
   isLaterThan(other: EvaluationTreePosition): boolean {
     return other.isEarlierThan(this);
   }
 
   /**
-   * Returns whether this node occurs strictly later in the AST than another node (i.e., it is *not* equal to the other node).
+   * Return whether this expression occurs *strictly* later in the source code than another expression (i.e., it is *not* equal to the other expression).
    */
   isStrictlyLaterThan(other: EvaluationTreePosition): boolean {
     return other.isStrictlyEarlierThan(this);
   }
 
   /**
-   * Returns the position of the deepest common ancestor of this node and another node.
+   * Return the position of the deepest common ancestor of this expression and another expression.
+   *
+   * @ignored
    */
   protected deepestCommonAncestor(
     other: EvaluationTreePosition,

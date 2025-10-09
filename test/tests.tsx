@@ -896,16 +896,3 @@ Deno.test("didWarnOrError", async () => {
   const _result3 = await ctx3.evaluate(<error>oh no</error>);
   assertEquals(ctx3.didWarnOrError(), true);
 });
-
-// const ctx = new Context();
-// await ctx.evaluate(<>
-//   <info>starting the computer</info>
-//   <loggingGroup>
-//     <info>running the bootloader</info>
-//     <info>initialising the file system</info>
-//   </loggingGroup>
-// </>);
-
-function DontUseThis({ children }: { children: Expression }): Expression {
-  return <halt />;
-}

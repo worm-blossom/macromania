@@ -352,14 +352,12 @@ export {
 /**
  * An expression, to be evaluated to a string.
  *
- * Evaluation is not a pure function, but threads a {@linkcode Context} value
- * through the evaluation, which can be read and manipulated by the functions
- * that get called as part of evaluating certain expressions.
+ * You can safely ignore the details of the definition of this type, we deliberately do not document the internals for that reason.
+ *
+ * @internal
  */
 export type Expression =
-  /**
-   * Every string evaluates to itself.
-   */
+  // Every string evaluates to itself.
   | string
   | FragmentExpression
   | EffectExpression
@@ -370,6 +368,8 @@ export type Expression =
 /**
  * A fragment consists of an array of expressions. They are evaulated in
  * sequence and the results are concatenated.
+ *
+ * @internal
  */
 type FragmentExpression = { fragment: Expression[] };
 
@@ -378,6 +378,8 @@ type FragmentExpression = { fragment: Expression[] };
  * expression. The function can also return `null`, signalling that it
  * cannot be evaluated just yet. In that case, it is called again in the
  * next evaluation round.
+ *
+ * @internal
  */
 type EffectExpression = {
   effect:
@@ -387,6 +389,8 @@ type EffectExpression = {
 
 /**
  * Call functions for their side-effects before and after attempting evaluate a wrapped expression.
+ *
+ * @internal
  */
 type LifecycleExpression = {
   lifecycle: {
@@ -399,6 +403,8 @@ type LifecycleExpression = {
 /**
  * Evaluate an expression to a string and then map that string to an
  * arbitrary new expression.
+ *
+ * @internal
  */
 type MapExpression = {
   map: {
@@ -411,6 +417,8 @@ type MapExpression = {
 
 /**
  * Attaches metadata to the expression returned by each macro evaluation.
+ *
+ * @internal
  */
 type MacroExpression = {
   macro: Expression;
@@ -547,35 +555,37 @@ function canBeEvaluatedOneStep(x: any): boolean {
 export type Macro = (props: any) => Expression;
 
 /**
- * The debugging information that the jsx factory attaches to all non-string {@linkcode Expression}s.
+ * The debugging information that macromania automatically attaches to all non-string expressions.
+ *
+ * These can be helpful for macro developers to debug their code. But the primary use of these is to give helpful information to content writers. See, for example, the {@linkcode Context.prototype.fmtDebuggingInformation | Context.fmtDebuggingInformation} method for how to log debugging information in a user-friendly way.
  */
 export interface DebuggingInformation {
   /**
    * Set to true if the expression is a macro call written by the user, set to false for builtins and for macro calls which are part of other macros.
    *
-   * Expressions appear in stack traces if and only if this is true.
+   * An expressions appears in a MAcromania stack trace if and only if this is true.
    */
   isPrimary?: boolean;
   /**
-   * The file in which the annotated {@linkcode Expression} was created.
+   * The file in which the annotated expression was created.
    */
   file?: string;
   /**
-   * The line in which the annotated {@linkcode Expression} was created.
+   * The line number at which the annotated expression was created.
    */
   line?: number;
   /**
-   * The column in which the annotated {@linkcode Expression} was created.
+   * The column number at which the annotated expression was created.
    */
   column?: number;
   /**
-   * The name of the function (macro) that created the annotated
-   * {@linkcode Expression}, or the name of the builtin.
+   * The name of the function (i.e., macro) that created the annotated
+   * expression, or the name of the builtin intrinsic that did.
    */
   name?: string;
   /**
-   * The function (macro) itself that created the annotated
-   * {@linkcode Expression}. Undefiend for builtins.
+   * The function (i.e., macro) itself that created the annotated
+   * expression. Undefiend for builtin intrinsics.
    */
   macroFun?: Macro;
 }
@@ -647,7 +657,7 @@ export class Context {
   /** @ignore */
   private warnedOrWorseYet: boolean;
   // The stack of logging levels that users can configure with the `loggingLevel` intrinsic.
-  /** @ignore */
+  /** @internal */
   readonly logLevelStacks: LogLevelStacks;
   /**
    * This field exposes methods for styling strings (text colour, background colour, italics, bold, underline, strikethrough) for logging in this context.
@@ -1382,13 +1392,6 @@ type PropsXs = {
   x: Children;
 };
 
-type PropsFragment = {
-  /**
-   * The array of Expressions to evaluate and concatenate.
-   */
-  x: Expression[];
-};
-
 type PropsEffect = {
   /**
    * Produce an {@linkcode Expression} from a {@linkcode Context}, or signal
@@ -1505,14 +1508,17 @@ type PropsSequence = {
   x: Expression[];
 };
 
+/** @internal */
 export declare namespace JSX {
   // https://devblogs.microsoft.com/typescript/announcing-typescript-5-1-beta/#decoupled-type-checking-between-jsx-elements-and-jsx-tag-types
   // https://www.typescriptlang.org/docs/handbook/jsx.html#the-jsx-result-type
+  /** @internal */
   type Element = Expression;
 
   // Configure the intrinsic elements and their props.
   // https://www.typescriptlang.org/docs/handbook/jsx.html#intrinsic-elements
   // https://www.typescriptlang.org/docs/handbook/jsx.html#attribute-type-checking
+  /** @internal */
   interface IntrinsicElements {
     /**
      * Convert the given `Children` (a single `Expression`, an array of `Expression`s, or `undefined`) into an expression.
@@ -1586,11 +1592,13 @@ export declare namespace JSX {
     sequence: PropsSequence;
   }
 
+  /** @internal */
   interface ElementAttributesProperty {
     // deno-lint-ignore ban-types
     props: {}; // specify the property name to use
   }
 
+  /** @internal */
   interface ElementChildrenAttribute {
     // deno-lint-ignore ban-types
     children: {}; // specify children name to use
@@ -1632,6 +1640,7 @@ function jsxSourceToDebuggingInformation(
 // https://www.typescriptlang.org/tsconfig#jsxFactory
 // https://www.typescriptlang.org/tsconfig#jsx
 // https://babeljs.io/docs/babel-plugin-transform-react-jsx-development
+/** @internal */
 export function jsxDEV(
   macro: MacromaniaIntrinsic | Macro,
   // deno-lint-ignore no-explicit-any
@@ -1743,6 +1752,7 @@ export function jsxDEV(
   }
 }
 
+/** @internal */
 export function Fragment(
   { children }: { children?: Expression | Expression[] },
 ): Expression {
