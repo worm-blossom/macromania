@@ -906,6 +906,6 @@ Deno.test("didWarnOrError", async () => {
 //   </loggingGroup>
 // </>);
 
-// function PerfectlyTransparentMacro({children}: {children: Children}): Expression {
-//   return <xs x={children}/>;
-// }
+function DontUseThis({ children }: { children: Expression }): Expression {
+  return <halt />;
+}

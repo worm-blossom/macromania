@@ -220,22 +220,100 @@ console.log(
  * The `<xs>` (*expressions*) intrinsic provides a way of turning any {@linkcode Children} passed to a macro into a single expression that can be returned or used in tsx:
  *
  * ```ts
-function PerfectlyTransparent({children}: {children: Children}): Expression {
+function Transparent({children}: {children: Children}): Expression {
   return <xs x={children}/>;
 }
  * ```
  *
  * The `<xs>` intrinsic is a purely technical necessity, tsx would emit compile errors if you tried something like `return children` or `return <>{children}</>`. This is because tsx expects single expressions, but passes the children of a macro as one of `undefined`, `Expression`, or `Expression[]`, depending on the macro invocation.
  *
+ * ### `effect`
+ *
+ * The `<effect>` intrinsic allows to create macros which can compute their output from a function, and that funciton is given access to the evaluating {@linkcode Context}.
+ *
+ * ```ts
+function IsEverythingkOk(): Expression {
+  return (
+    <effect
+      fun={(ctx: Context) => {
+        if (ctx.didWarnOrError()) {
+          return "oh no";
+        } else {
+          return "yay";
+        }
+      }}
+    />
+  );
+}
+ * ```
+ *
+ * The mandatory `fun` prop must be a function that takes a {@linkcode Context} and returns an expression, `null`, or a `Promise` of either.
+ * When returning an expression, macro evaluation proceeds by evaluating that expression — effectively, the `<effect>` intrinsic replaces itself with the return value of the function in this case. When the function returns `null`, this signals to the context that the macro could not be evaluated yet. Evaluation proceeds with a different macro then, and only returns back to this `<effect>` intrinsic once every other expression had an evaluation attempt.
+ *
+ * Note that macro evaluation will fail if there are ever two successive rounds of evaluation attempts in which not a single macro makes progress. Macros can query whether the current round of evaluation is in danger of being the final one with the {@linkcode Context.prototype.mustMakeProgress | Context.mustMakeProgress} method.
+ *
+ * ```ts
+function Ornery(): Expression {
+  return (
+    <effect
+      fun={(ctx: Context) => {
+        if (ctx.mustMakeProgress()) {
+          return "okay, I'll evaluate to something";
+        } else {
+          return null;
+        }
+      }}
+    />
+  );
+}
+ * ```
+ *
+ * See also the {@linkcode Context.createState} function for information on how to make domain-specific state accessible to the `fun` function via the context.
+ *
+ * ### `map`
+ *
+ * The `<map>` intrinsic first evaluates its children to a string, and then passes that string (and the evaluating {@linkcode Context}) to a function. That function returns a new expression (or a `Promise` of one), which then replaces the `<map>` intrinsic in the evaluation process.
+ *
+ * ```ts
+function Yell({ children }: { children: Children }): Expression {
+  const fun = (_: Context, evaled: string) => evaled.toUpperCase();
+  return <map fun={fun}><xs x={children}/></map>;
+}
+ * ```
+ *
+ * See also the {@linkcode Context.createState} function for information on how to make domain-specific state accessible to the `fun` function via the context.
+ *
+ * ### `lifecycle`
+ *
+ * The `<lifecycle>` intrinsic takes as props up to two functions, each taking an as its single argument a {@linkcode Context} and returning either `void` or `Promise<void>`. The `pre` function is called *before* every evaluation attempt of the children of the `<lifecycle>` intrinsic, and the `post` function is called *after* every evaluation attempt of the children of the `<lifecycle>` intrinsic.
+ *
+ * ```ts
+function Traced({ children }: { children: Expression }): Expression {
+  return (
+    <lifecycle
+      pre={(ctx) => ctx.trace("before")}
+      post={(ctx) => ctx.trace("after")}
+    >
+      <xs x={children} />
+    </lifecycle>
+  );
+}
+ * ```
+ *
+ * See also the {@linkcode Context.createState} function for information on how to make domain-specific state accessible to the `pre` and `post` functions via the context.
+ *
+ * ### `halt`
+ *
+ * The `<halt>` intrinsic immediately halts evaluation with an error when evaluated.
+ *
+ * ```ts
+function DontUseThis(): Expression {
+  return <halt />;
+}
+ * ```
+ *
  * @module
  */
-
-// type MacromaniaIntrinsic =
-//   | "fragment"
-//   | "effect"
-//   | "map"
-//   | "lifecycle"
-//   | "halt"
 
 import {
   type LoggingBackend,
@@ -1224,7 +1302,6 @@ function expressions(children: Children): Expression[] {
 type MacromaniaIntrinsic =
   | "xs"
   | "omnomnom"
-  | "fragment"
   | "effect"
   | "map"
   | "lifecycle"
@@ -1380,10 +1457,6 @@ export declare namespace JSX {
      */
     xs: PropsXs;
     /**
-     * Evaluate and concatenate some expressions (same as a fragment, i.e., `<>bla</>`).
-     */
-    fragment: PropsFragment;
-    /**
      * Create an {@linkcode Expression} dependent on the current
      * {@linkcode Context}, and evaluate it.
      */
@@ -1523,8 +1596,6 @@ export function jsxDEV(
     } else {
       return props.x;
     }
-  } else if (macro === "fragment") {
-    return fragmentExp(props.x);
   } else if (macro === "effect") {
     return effectExp(props.fun);
   } else if (macro === "map") {
