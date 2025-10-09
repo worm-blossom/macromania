@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "display": "Deno",
 
-  "name": "@wormblossom/macromania",
-  "version": "2.0.0",
+  "name": "@macromania/macromania",
+  "version": "0.1.0",
   "exports": {
     "./jsx-runtime": "./mod.ts",
     "./jsx-dev-runtime": "./mod.ts",
