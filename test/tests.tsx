@@ -4,10 +4,10 @@ Some additional tests that did not make sense in the tutorial.
 
 import { assertEquals } from "@std/assert";
 import {
+  type Children,
   Context,
   type DebuggingInformation,
   type Expression,
-  type Children,
 } from "../mod.ts";
 import { newStack, type Stack } from "../stack.ts";
 
@@ -870,3 +870,42 @@ Deno.test("createConfig", async () => {
     assertEquals(got, "");
   })();
 });
+
+Deno.test("didGiveUp", async () => {
+  const ctx = new Context();
+  const result = await ctx.evaluate(<effect fun={(_ctx) => null} />);
+  assertEquals(result, null);
+  assertEquals(ctx.didGiveUp(), true);
+
+  const ctx2 = new Context();
+  const result2 = await ctx2.evaluate(<effect fun={(_ctx) => "hi"} />);
+  assertEquals(result2, "hi");
+  assertEquals(ctx2.didGiveUp(), false);
+});
+
+Deno.test("didWarnOrError", async () => {
+  const ctx = new Context();
+  const _result = await ctx.evaluate(<info>oh no</info>);
+  assertEquals(ctx.didWarnOrError(), false);
+
+  const ctx2 = new Context();
+  const _result2 = await ctx2.evaluate(<warn>oh no</warn>);
+  assertEquals(ctx2.didWarnOrError(), true);
+
+  const ctx3 = new Context();
+  const _result3 = await ctx3.evaluate(<error>oh no</error>);
+  assertEquals(ctx3.didWarnOrError(), true);
+});
+
+// const ctx = new Context();
+// await ctx.evaluate(<>
+//   <info>starting the computer</info>
+//   <loggingGroup>
+//     <info>running the bootloader</info>
+//     <info>initialising the file system</info>
+//   </loggingGroup>
+// </>);
+
+// function PerfectlyTransparentMacro({children}: {children: Children}): Expression {
+//   return <xs x={children}/>;
+// }

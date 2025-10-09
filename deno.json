@@ -5,9 +5,9 @@
   "name": "@wormblossom/macromania",
   "version": "2.0.0",
   "exports": {
-    ".": "./mod.ts",
     "./jsx-runtime": "./mod.ts",
-    "./jsx-dev-runtime": "./mod.ts"
+    "./jsx-dev-runtime": "./mod.ts",
+    ".": "./mod.ts"
   },
 
   "imports": {
@@ -25,6 +25,6 @@
   },
 
   "tasks": {
-    "test": "deno test test/tutorial.tsx && deno test test/tests.tsx && deno test test/logging.tsx && deno test test/etp.tsx"
+    "test": "deno test test/deprecated_tutorial.tsx && deno test test/tests.tsx && deno test test/logging.tsx && deno test test/etp.tsx"
   }
 }

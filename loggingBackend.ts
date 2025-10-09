@@ -98,6 +98,11 @@ export interface LoggingBackend {
   endGroup(): void;
 }
 
+/**
+ * Test
+ *
+ * @public
+ */
 export interface LoggingFormatter {
   /**
    * Format a string such that the logger will render it with black background.

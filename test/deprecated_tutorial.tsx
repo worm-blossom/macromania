@@ -1,22 +1,8 @@
-/***
- *      _____            _                        _               _
- *     |_   _|  _  _    | |_     ___      _ _    (_)    __ _     | |
- *       | |   | +| |   |  _|   / _ \    | '_|   | |   / _` |    | |
- *      _|_|_   \_,_|   _\__|   \___/   _|_|_   _|_|_  \__,_|   _|_|_
- *    _|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|_|"""""|
- *    "`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'"`-0-0-'
- */
-
-/*
-Welcome to the Macromania tutorial. You can start reading this file without
-knowing anything about Macromania. The tutorial walks you through all the
-features of Macromania. It also happens to double as a test suite.
-*/
 import { assertEquals } from "@std/assert";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Warning: This tutorial was written for macromania 1.0.0, and has not been properly updated for verison 2.0.0. //
-// The text might be out of sync with the code at times.                                                         //
+// We only keep it around for its tests.                                                                         //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////
@@ -532,7 +518,9 @@ Deno.test("exps", async () => {
   assertEquals(got2, "foo");
 
   const ctx3 = new Context();
-  const got3 = await ctx3.evaluate(<ChildrenDemo>{"foo"}{"bar"}{"baz"}</ChildrenDemo>);
+  const got3 = await ctx3.evaluate(
+    <ChildrenDemo>{"foo"}{"bar"}{"baz"}</ChildrenDemo>,
+  );
   assertEquals(got3, "foobarbaz");
 });
 

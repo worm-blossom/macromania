@@ -1,8 +1,4 @@
-import {
-  Context,
-  Expression,
-  Children,
-} from "macromaniajsx/jsx-dev-runtime";
+import { Children, Context, Expression } from "macromaniajsx/jsx-dev-runtime";
 import { LoggingBackend, LogLevel } from "../loggingBackend.ts";
 import { assertEquals } from "@std/assert/assert-equals";
 
@@ -12,6 +8,10 @@ class TestLogger implements LoggingBackend {
   constructor() {
     this.ops = [];
   }
+  logEmptyLine(): void {
+    this.log("ignore");
+  }
+
   // deno-lint-ignore no-explicit-any
   log(level: LogLevel, ...data: any[]): void {
     this.ops.push([level, data]);

@@ -11,6 +11,232 @@
 
 */
 
+/**
+ * # Macromania!
+ *
+ * Macromania is a typescript-embedded domain-specific language for creating
+ * strings, using [jsx syntax](https://en.wikipedia.org/wiki/JSX_(JavaScript)). You
+ * can think of it as a highly expressive but completely unopinionated templating
+ * language. It takes inspiration from lisp-like macro expansion and
+ * [TeX](https://en.wikipedia.org/wiki/TeX), but the design ensures meaningful
+ * error reporting, principled interaction between stateful macros, and static
+ * typing for the input expressions.
+ *
+ * See the [Macromania website](https://macromania.worm-blossom.org/) for introductory content; these API docs serve as a reference more than as an onboarding ramp. The following docs assume a basic understanding of how to use macromania already.
+ *
+ * Throughout these docs, *writer* refers to people authoring content using Macromania, and *developer* refers to people programming Macromania macros. After a common section on Macromania setup, this high-level overview is split into first the features intended for *writers*, and then the features intended for *developers*.
+ *
+ * ## Setup
+ *
+ * Both *writers* of content and *developers* of macros need to configure Deno to correctly process the tsx of Macromania. In the [`deno.json`](https://docs.deno.com/runtime/fundamentals/configuration/) file, make sure that
+ *
+ * - the `imports` map includes the `jsr:@macromania/macromania` package, and
+ * - the `compilerOptions` specify both
+ *   - `jsxImportSource": "<your-import-of-macromania>"` and
+ *   - `"jsx": "react-jsxdev"`.
+ *
+ * A complete example `deno.json`:
+ *
+ * ```json
+ {
+  "name": "getting-started-with-macromania",
+  "version": "1.0.0",
+
+  "imports": {
+    "macromania": "jsr:@macromania/macromania",
+  },
+
+  "compilerOptions": {
+    "jsx": "react-jsxdev",
+    "jsxImportSource": "macromania",
+    "lib": ["deno.ns", "dom"],
+    "strict": true
+  },
+}
+ * ```
+ *
+ * Chances are you want your text editor or IDE to also pick up this configuration. Depending on your specific editor and its workspace settings, you may need to place similar `deno.json` files at a workspace level in addition to the deno package level. When in doubt, try opening only the package you are working on instead of a whole workspace.
+ *
+ * By the way: the `"jsx": "react-jsxdev"` line does not introduce any dependencies on the [`react`](https://react.dev/) libraray, it merely specifies a particular way in which typescript compilers will convert jsx and tsx into plain javascript and typescript respectively.
+ *
+ * We provide a minimal [demo setup here](https://codeberg.org/worm-blossom/getting-started-with-macromania).
+ *
+ * ## Macromania for Writers
+ *
+ * The entrypoint to using Macromania for *writers* is the {@linkcode Context} class. The basic workflow is to create a context, give it an expression, and call its async {@linkcode Context.prototype.evaluate | evaluate} method to evaluate the expression into a plain string.
+ *
+ * ```ts
+import { Context } from "macromania";
+const ctx = new Context();
+console.log(await ctx.evaluate("Hi!"));
+// Logs `Hi!`.
+ * ```
+ *
+ * Evaluation of more complex expressions may fail, in which case {@linkcode Context.prototype.evaluate | evaluate} yields `null`.
+ *
+ * The {@linkcode Context.prototype.didGiveUp | didGiveUp} method returns `true` iff evaluation failed because of a deadlock where no macro could be evaluated for two successive evaluation rounds.
+ *
+```ts
+import { Context } from "macromania";
+const ctx = new Context();
+
+// The expression will never make evaluation progress.
+// Evaluation will give up after two evaluation rounds.
+const result = await ctx.evaluate(<effect fun={(_ctx) => null}/>);
+
+// Logs `null, true`.
+console.log(result, ctx.didGiveUp());
+ * ```
+ *
+ * The {@linkcode Context.prototype.didWarnOrError |  didWarnOrError} method reports whether at least one warning or error was logged during evaluation.
+ *
+ * ```ts
+import { Context } from "macromania";
+const ctx = new Context();
+
+const result = await ctx.evaluate(<warn>oh no</warn>);
+
+// Logs `true`.
+console.log(ctx.didWarnOrError());
+ * ```
+ *
+ * Beyond these aspects of the {@linkcode Context} class, there are a couple of *intrinsics* that writers should know about. *Intrinsics* are those tsx "tags" which are built into macromania and which do not need to be imported. Unlike user-defined macros, their names start with a lowercase letter.
+ *
+ * The following intrinsics are useful for writers (i.e., have uses outside of macro creation).
+ *
+ * ### `omnomnom`
+ *
+ * The `<omnomnom>` intrinsic evaluates its children, but swallows the output and yields the empty string.
+ *
+ * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+// Logs `"ac"`.
+console.log(await ctx.evaluate(<>a<omnomnom>b</omnomnom>c</>));
+ * ```
+ *
+ * ### `sequence`
+ *
+ * The `<sequence>` intrinsic evaluates an array of expressions in strict sequence: only once one expression has been evaluated to completion does evaluation of the next expression start.
+ *
+ * Some macros might have implicit dependenices on each other, where one can only operate once the other has been evaluated. Use this intrinsic in such situations. Also, consider using different macros in such situations. Ideally, you will never need to reach for this intrinsic at all.
+ *
+ * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+// Logs `"abc"`, and evaluated those highly complex expressions in strict sequence.
+console.log(await ctx.evaluate(<sequence x={["a", "b", "c"]} />));
+ * ```
+ *
+ * ### Logging
+ *
+ * The `<log>` intrinsic logs its contents at a given {@linkcode LogLevel}. It itself evaluates to the empty string.
+ *
+ * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+await ctx.evaluate(<log level="warn">oh no</log>);
+ * ```
+ *
+ * For convenience, there are intrinsicts for each of the supported logging levels (except for the `"ignore"` level):
+ *
+ * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+await ctx.evaluate(<>
+  <debug>hmm</debug>
+  <trace>doing stuff</trace>
+  <info>it worked</info>
+  <warn>oh no</warn>
+  <error>nope!</error>
+</>);
+ * ```
+ *
+ * Finally, the `<loggingGroup>` macro will visually group all logging calls within its children, for example, by indentation.
+ *
+ * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+await ctx.evaluate(<>
+  <info>starting the computer</info>
+  <loggingGroup>
+    <info>running the bootloader</info>
+    <info>initialising the file system</info>
+  </loggingGroup>
+</>);
+ * ```
+ *
+ * ### `loggingLevel`
+ *
+ * The `<loggingLevel>` intrinsic configures the logging level for all child expressions. It has a mandatory `level` prop to select the {@linkcode LogLevel} to apply to its child expressions. Any logging operations of a level below the specified level will be silenced. When not using this intrinsic at all, the default threshold is to log only warnings and errors.
+ *
+ * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+console.log(await ctx.evaluate(<>
+  <loggingLevel level="info">
+    <trace>will not be logged</trace>
+    <info>will be logged</info>
+    <warn>will be logged</warn>
+  </loggingLevel>
+</>));
+ * ```
+
+While the `<loggingLevel level="<some-level>">` form of the `<loggingLevel>` intrinsic applies to *all* logging operations in its child expressions, you can also restrict it to apply to only the logging operations happening in the expansion of certain macros, via the `macro` prop.
+
+```ts
+import { Context, Expression } from "macromania";
+
+const ctx = new Context();
+
+function ExampleMacro(): Expression {
+  return <info>hi from the macro</info>;
+}
+
+console.log(
+  await ctx.evaluate(
+    <>
+      <loggingLevel level="info" macro={ExampleMacro}>
+        <ExampleMacro />
+        <info>will not be logged</info>
+      </loggingLevel>
+    </>,
+  ),
+);
+ * ```
+ *
+ * ## Macromania for Developers
+ *
+ * Macro developers will want to familiarise themselves with the full API of the {@linkcode Context} class. Additionally, there are a handful of intrinsics that are not needed for writing content but which help in defining macros.
+ *
+ * ### `xs`
+ *
+ * The `<xs>` (*expressions*) intrinsic provides a way of turning any {@linkcode Children} passed to a macro into a single expression that can be returned or used in tsx:
+ *
+ * ```ts
+function PerfectlyTransparent({children}: {children: Children}): Expression {
+  return <xs x={children}/>;
+}
+ * ```
+ *
+ * The `<xs>` intrinsic is a purely technical necessity, tsx would emit compile errors if you tried something like `return children` or `return <>{children}</>`. This is because tsx expects single expressions, but passes the children of a macro as one of `undefined`, `Expression`, or `Expression[]`, depending on the macro invocation.
+ *
+ * @module
+ */
+
+// type MacromaniaIntrinsic =
+//   | "fragment"
+//   | "effect"
+//   | "map"
+//   | "lifecycle"
+//   | "halt"
+
 import {
   type LoggingBackend,
   type LoggingFormatter,
@@ -33,6 +259,8 @@ import { doCreateConfig, doCreateScopedState } from "./stateHelpers.tsx";
 
 export {
   type EvaluationTreePosition,
+  type LoggingBackend,
+  type LoggingFormatter,
   logGt,
   logGte,
   type LogLevel,
@@ -295,40 +523,63 @@ const haltEvaluation = Symbol("Halt Evaluation");
 let currentlyEvaluating = false;
 
 /**
- * The state that is threaded through an evaluation process.
+ * The entrypoint to macro evaluation.
+ *
+ * Encapsulates all state required for evaluating an expression.
+ *
+ * ```ts
+import { Context } from "macromania";
+
+// Create a new context.
+const ctx = new Context();
+
+// Use the context to evaluate an expression. Yay =)
+const result = await ctx.evaluate("Hello, world!");
+
+// Logs `"Hello, world!"`.
+console.log(result, ctx.didGiveUp());
+ * ```
  */
 export class Context {
   // The shared mutable state.
+  /** @ignore */
   private state: State;
   // Like a callstack, but for the DebuggingInformation of
   // user-invoked macros.
+  /** @ignore */
   private stack: Stack<DebuggingInformation>;
   // Tracks the current position in the evaluation process.
+  /** @ignore */
   private etp: EvaluationTreePositionImpl;
   // True when evaluation would halt if no effect expression returns non-null.
+  /** @ignore */
   private haveToMakeProgress: boolean;
   // Count the number of evaluation rounds.
+  /** @ignore */
   private round: number;
   // To determine whether `haveToMakeProgress` needs to be set after an
   // evaluation round, we track whether at least one effect expression returned
   // non-null in the current round.
+  /** @ignore */
   private madeProgressThisRound: boolean;
   // Starts as `false`, switches to `true` when a warning or error is logged.
+  /** @ignore */
   private warnedOrWorseYet: boolean;
   // The stack of logging levels that users can configure with the `loggingLevel` intrinsic.
-  /**
-   * Do not use this field. Typescript makes it impossible to encapsulate it, but this is an implementation detail that must not be touched.
-   */
+  /** @ignore */
   readonly logLevelStacks: LogLevelStacks;
   /**
-   * Methods for styling strings (text colour, background colour, italics, bold, underline, strikethrough) for logging.
+   * This field exposes methods for styling strings (text colour, background colour, italics, bold, underline, strikethrough) for logging in this context.
+   *
+   * Always use these methods (or the helper methods {@linkcode Context.prototype.fmtCode | fmtCode}, {@linkcode Context.prototype.fmtURL | fmtURL}, {@linkcode Context.prototype.fmtFilePath | fmtFilePath}, or {@linkcode Context.prototype.fmtDebuggingInformation | fmtDebuggingInformation}) for styling logging output; do *not*, for example, manually add ansii escapes. This is because different logging backends might require completely different styling approaches. An HTML-emitting logger, for example, would not do well when fed strings with ansii escapes.
    */
   // This is also always the `LoggingBackend` we use. But we don't want to expose that functionality externally, so we omit the type from the public interface and typecast when we use it as a `LoggingBackend` internally.
   readonly fmt: LoggingFormatter;
 
   /**
-   * Create a new `Context`, logging to the given `LoggingTarget`.
-   * @param logger The {@linkcode LoggingBackend} and {@linkcode LoggingFormatter} to use. Defaults to the global console with ansii escape sequences.
+   * Create a new `Context`.
+   *
+   * You can optionally specify a {@linkcode LoggingBackend} and {@linkcode LoggingFormatter} to configure the logging methods and intrinsics of expressions evaluated with this context. By default, a context will log to the global console, using ansii escape sequences for formatting.
    */
   constructor(logger?: LoggingBackend & LoggingFormatter) {
     this.state = new Map();
@@ -340,6 +591,55 @@ export class Context {
     this.fmt = logger ?? new DefaultLogger();
     this.warnedOrWorseYet = false;
     this.logLevelStacks = new LogLevelStacks();
+  }
+
+  /**
+   * Returns whether evaluation has been given up because no progress could
+   * be made.
+   *
+   * ```ts
+import { Context } from "macromania";
+const ctx = new Context();
+
+// The expression will never make evaluation progress.
+// Evaluation will give up after two evaluation rounds.
+const result = await ctx.evaluate(<effect fun={(_ctx) => null}/>);
+
+// Logs `null, true`.
+console.log(result, ctx.didGiveUp());
+
+const ctx2 = new Context();
+const result2 = await ctx2.evaluate("hi");
+
+// Logs `"hi", false`.
+console.log(result2, ctx2.didGiveUp());
+ * ```
+   */
+  public didGiveUp(): boolean {
+    return this.mustMakeProgress() && !this.madeProgressThisRound;
+  }
+
+  /**
+   * Returns whether at least one warning or an error has been logged with this `Context`.
+   *
+   * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+const result = await ctx.evaluate(<warn>oh no</warn>);
+
+// Logs `true`.
+console.log(ctx.didWarnOrError());
+
+const ctx2 = new Context();
+const result2 = await ctx2.evaluate(<warn>oh no</warn>);
+
+// Logs `false`.
+console.log(ctx2.didWarnOrError());
+ * ```
+   */
+  public didWarnOrError(): boolean {
+    return this.warnedOrWorseYet;
   }
 
   /**
@@ -446,13 +746,6 @@ export class Context {
    */
   public getRound(): number {
     return this.round;
-  }
-
-  /**
-   * @returns Whether a warning or an error has been logged with this `Context`.
-   */
-  public didWarnOrError(): boolean {
-    return this.warnedOrWorseYet;
   }
 
   /**
@@ -601,14 +894,6 @@ export class Context {
     (<LoggingBackend> <unknown> this.fmt).startGroup();
     thunk();
     (<LoggingBackend> <unknown> this.fmt).endGroup();
-  }
-
-  /**
-   * Returns whether evaluation has been given up because no progress could
-   * be made.
-   */
-  public didGiveUp(): boolean {
-    return this.mustMakeProgress() && !this.madeProgressThisRound;
   }
 
   /**
