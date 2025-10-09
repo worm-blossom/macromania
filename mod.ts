@@ -346,6 +346,7 @@ export {
   logLte,
   logMax,
   logMin,
+  type Stack,
 };
 
 /**
@@ -614,9 +615,11 @@ const ctx = new Context();
 // Use the context to evaluate an expression. Yay =)
 const result = await ctx.evaluate("Hello, world!");
 
-// Logs `"Hello, world!"`.
+// Logs `"Hello, world!", false`.
 console.log(result, ctx.didGiveUp());
  * ```
+ *
+ * You can reuse the same context to evaluate successive expressions *in principle*. But those evaluation runs will share the same state, and the macros might not expect that. By default, you should probably assume that you use a single context to evaluate exactly one expression.
  */
 export class Context {
   // The shared mutable state.
@@ -672,7 +675,7 @@ export class Context {
   }
 
   /**
-   * Returns whether evaluation has been given up because no progress could
+   * Return whether evaluation has been given up because no progress could
    * be made.
    *
    * ```ts
@@ -698,7 +701,7 @@ console.log(result2, ctx2.didGiveUp());
   }
 
   /**
-   * Returns whether at least one warning or an error has been logged with this `Context`.
+   * Return whether at least one warning or error has been logged with this `Context`.
    *
    * ```ts
 import { Context } from "macromania";
@@ -721,9 +724,40 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * Create a getter and a setter for a unique, statically typed state, tracked by a {@linkcode Context}.
-   * @param initial A function that produces the initial state.
-   * @returns A getter and a setter for the state.
+   * Create a getter and a setter for a statically typed bit of state (of type `S`), uniquely created and accessed for each {@linkcode Context}.
+   *
+   * The `initial` parameter is a function that produces the initial state.
+   *
+   * Returns a getter function and a setter function for the state. Both take as a first argument the {@linkcode Context} in which to access the state.
+   *
+   * ```ts
+   * // Create a getter and a setter for some macro-specific state.
+const [getCount, setCount] = Context.createState<
+  number // type of the state
+>(
+  () => 0, // function producing the initial state
+);
+
+function Count(): Expression {
+  return (
+    <effect
+      fun={(ctx: Context) => {
+        const oldCount = getCount(ctx);
+        setCount(ctx, oldCount + 1);
+        return `${oldCount}`;
+      }}
+    />
+  );
+}
+
+const ctx = new Context();
+const got = await ctx.evaluate(
+  <>
+    <Count /> <Count /> <Count />
+  </>,
+);
+assertEquals(got, "0 1 2");
+   * ```
    */
   static createState<S>(
     initial: () => S,
@@ -749,9 +783,13 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * Create a getter and a setter for a scoped state. The returned scope macro crates a new scope, and the getter and setter interact with independent states within each scope.
-   * @param initial A function that produces the initial state for each scope, based on the state of the parent scope (or `undefined` if there is no parent scope).
-   * @returns A scope macro, and a getter and a setter for the state.
+   * Create a scope macro, a getter, and a setter for a scoped state of type `S`. Evaluating the scope macro effectively creates a completely new instance of the state: getter or setter calls within the child expressions of the scope macro are independent from all getter and setter calls outside that scope macro invocation.
+   *
+   * The `initial` parameter is a function that produces the initial state for each scope, based on the state of the parent scope (or `undefined` if there is no parent scope).
+   *
+   * Returns a scope macro, and a getter and a setter for the state.
+   *
+   * See also {@linkcode Context.createState} for a more general form of state management.
    */
   static createScopedState<S>(
     initial: (parentState?: S) => S,
@@ -768,9 +806,11 @@ console.log(ctx2.didWarnOrError());
    *
    * The configuration state of type `C` is a record mapping strings to (typically) optional values. The `initial` function produces the default configuration, providing a value for each key.
    *
-   * Users use the first return value, a macro for setting configuration values. That macro accepts an optional prop for each key of `C`. When evaluating the children of this macro, the props that were set overwrite the config values of the parent scope (the default configuration if there is no parent configuration macro).
+   * The first return value of this function — a macro for supplying configuration information — should be exposed to writers of Macromania-based content. The macro accepts an optional prop for each key of `C`. When evaluating the children of the macro, the props that were set overwrite the config values of the parent scope (or of the default configuration if there is no parent configuration macro).
    *
-   * The second return value lets macro authors access configuration values.
+   * The second return value lets macro authors access the configured values.
+   *
+   * See also {@linkcode Context.createState} for a more general form of state management.
    */
   // deno-lint-ignore no-explicit-any
   static createConfig<C extends Record<string, any>>(
@@ -783,25 +823,27 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * @returns A stack of all the {@linkcode DebuggingInformation} of all
-   * ancestor {@linkcode StacktracingExpression}s of the currently evaluated
-   * expression.
+   * Return the stack of {@linkcode DebuggingInformation} of all
+   * ancestor macro invocations of the currently evaluated expression.
+   *
+   * See also {@linkcode fmtDebuggingInformation} for how to log the debug information.
    */
   public getDebuggingStack(): Stack<DebuggingInformation> {
     return this.stack;
   }
 
   /**
-   * @returns The current {@linkcode EvaluationTreePosition}.
+   * Return the current {@linkcode EvaluationTreePosition} — a value which can be compared against the {@linkcode EvaluationTreePosition} of other expressions, in order to recover how their positions in the input source code relate.
    */
   public getEvaluationTreePosition(): EvaluationTreePosition {
     return this.etp;
   }
 
   /**
-   * @returns The {@linkcode DebuggingInformation} of the
-   * {@linkcode StacktracingExpression} closest to the currently evaluated
-   * expression. An empty object if there is none.
+   * Return the {@linkcode DebuggingInformation} for the currently evaluated
+   * expression, or an empty object if there is no debugging information available. The latter is the case when no ancestor of the current expression (inlcuding the expression itself) is a proper macro invocation.
+   *
+   * See also {@linkcode fmtDebuggingInformation} for how to log the debug information.
    */
   public getCurrentDebuggingInformation(): DebuggingInformation {
     return this.stack.peek() ?? {};
@@ -813,14 +855,16 @@ console.log(ctx2.didWarnOrError());
    * If no effect expression makes progress in that round either,
    * evaluation stops.
    *
-   * @returns `true` if progress must be made, `false` otherwise.
+   * Returns `true` if progress must be made, `false` otherwise.
    */
   public mustMakeProgress(): boolean {
     return this.haveToMakeProgress;
   }
 
   /**
-   * @returns The current evaluation round number.
+   * Return the current evaluation round number.
+   *
+   * `<effect>` intrinsics whose function returns `null` can cause evaluation to require more than a single round.
    */
   public getRound(): number {
     return this.round;
@@ -847,7 +891,7 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * Adds an empty line to the log. The logging level will not be indicated visually, but no empty line will be logged if the logging level is too low.
+   * Add an empty line to the log. The logging level will not be indicated visually, but no empty line will be logged if the logging level is too low.
    */
   logEmptyLine(level: LogLevel) {
     if (level === "warn" || level === "error") {
@@ -966,7 +1010,7 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * Executes the given `thunk`. All logging happening inside will be visually grouped together.
+   * Execute the given `thunk`. All logging happening inside will be visually grouped together.
    */
   loggingGroup(thunk: () => void) {
     (<LoggingBackend> <unknown> this.fmt).startGroup();
@@ -977,9 +1021,8 @@ console.log(ctx2.didWarnOrError());
   /**
    * Prints a stacktrace, then immediately and faultily terminates evaluation.
    *
-   * @returns A dummy Expression so you can write `return ctx.halt()` in
-   * effect or map functions. This function always throws, it never
-   * actually returns a value.
+   * Returns a dummy Expression so you can write `return ctx.halt();` in
+   * places where an expression is expected. calling this function will actually throw an error instead of properly returning. That error is catched elsewhere by macromania, short-circuiting the evaluation process.
    */
   public halt(): Expression {
     // Print a stacktrace of the user-facing macros that lead to the failure.
@@ -990,7 +1033,7 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * Styles some {@linkcode DebuggingInformation} for logging.
+   * Style some {@linkcode DebuggingInformation} for logging, in the same way that macromania does for its own warning and error logging.
    */
   fmtDebuggingInformation(
     info: DebuggingInformation,
@@ -1004,28 +1047,28 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * Styles a file path the same way that macromania styles file paths for logging.
+   * Style a native file path for logging, in the same way that macromania does for its own warning and error logging.
    */
   fmtFilePath(path: string): string {
     return this.fmt.cyan(path);
   }
 
   /**
-   * Styles a code snipped the same way that macromania styles code snippets for logging.
+   * Style a code snippet for logging, in the same way that macromania does for its own warning and error logging.
    */
   fmtCode(s: string): string {
     return this.fmt.yellow(s);
   }
 
   /**
-   * Styles a URL the same way that macromania styles URLs for logging.
+   * Style a URL for logging, in the same way that macromania does for its own warning and error logging.
    */
   fmtURL(s: string): string {
     return this.fmt.blue(s);
   }
 
   /**
-   * Logs a stacktrace.
+   * Log a stacktrace of all ancestor macro calls of the currently evaluated expression. Logging happens at the given {@linkcode LogLevel} (defaulting to `"error"`).
    */
   public printStack(logLevel: LogLevel = "error") {
     let s = this.stack;
@@ -1040,6 +1083,7 @@ console.log(ctx2.didWarnOrError());
   }
 
   // Attempt to evaluate a single Expression, or `Children`.
+  /** @ignore */
   private async doEvaluate(exps: Children): Promise<Expression> {
     const exp = exps === undefined || Array.isArray(exps)
       ? fragmentExp(expressions(exps))
@@ -1139,7 +1183,16 @@ console.log(ctx2.didWarnOrError());
   }
 
   /**
-   * Evaluate an expression to a string, or return `null` in case of failure.
+   * The most important method in Macromania: evaluate an expression to a string, or return `null` in case of failure.
+   *
+   * ```ts
+import { Context } from "macromania";
+
+const ctx = new Context();
+const result = await ctx.evaluate("Hello, world!");
+// Logs `"Hello, world!"`.
+console.log(result);
+ * ```
    */
   public async evaluate(expression: Expression): Promise<string | null> {
     currentlyEvaluating = true;
@@ -1194,6 +1247,7 @@ console.log(ctx2.didWarnOrError());
   }
 
   // Terminate execution and give a helpful error message.
+  /** @ignore */
   // deno-lint-ignore no-explicit-any
   private printNonExp(x: any): Expression {
     this.error(
@@ -1226,6 +1280,7 @@ console.log(ctx2.didWarnOrError());
     return this.halt();
   }
 
+  /** @ignore */
   private logBlockingExpressions(exp: Expression) {
     // Prepare for logging, then call a recursive subroutine to do the actual work.
     this.error(
@@ -1235,6 +1290,7 @@ console.log(ctx2.didWarnOrError());
     this.doLogBlockingExpressions(exp, {});
   }
 
+  /** @ignore */
   private doLogBlockingExpressions(
     exp: Expression,
     info: DebuggingInformation,
@@ -1273,7 +1329,13 @@ function simplifyExpressionsArray(
 }
 
 /**
- * Utility type for macros that accept an arbitrary number of children.
+ * The union of all possible types which can be passed to a macro as children. You will typically want to use this type for the `children` prop of a macro, and then render those children with the `<xs>` intrinsic.
+ *
+ * ```ts
+function Transparent({children}: {children: Children}): Expression {
+  return <xs x={children}/>;
+}
+ * ```
  */
 export type Children = undefined | Expression | Expression[];
 
