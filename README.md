@@ -1,3 +1,5 @@
+Repo migrated to https://codeberg.org/macromania/macromania
+
 ![Logotype of the name of this project: Macromania](./macromania_deco.png)
 
 Text generation made ~~easy~~ simple.
